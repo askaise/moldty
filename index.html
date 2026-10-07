@@ -1453,7 +1453,7 @@ const STORAGE_SCHEDULED = 'scheduled_notifications_v1';
 let _notifInitialized=false, _swRegistration=null, _periodicTimer=null;
 const _sessionTimers = new Map();
 const SW_SOURCE = `self.addEventListener('message',(event)=>{ if(event.data?.type==='show-notification'){ const{id,title,body,tag}=event.data; self.registration.showNotification(title,{body,tag:String(tag??id),icon:event.data.icon||undefined,badge:event.data.icon||undefined,dir:'rtl',lang:'ar',requireInteraction:false,data:{id}}); }}); self.addEventListener('notificationclick',(event)=>{ event.notification.close(); event.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{ for(const client of list){ if(client.url && 'focus' in client) return client.focus(); } if(clients.openWindow) return clients.openWindow('/'); })); });`;
-async function _registerServiceWorker(){ if (_swRegistration) return _swRegistration; if (!('serviceWorker' in navigator)) return null; try { const blob = new Blob([SW_SOURCE], { type:'application/javascript' }); const url = URL.createObjectURL(blob); _swRegistration = await navigator.serviceWorker.register(url, { scope:'./' }); return _swRegistration; } catch { return null; } }
+async function _registerServiceWorker(){ if (_swRegistration) return _swRegistration; if (!('serviceWorker' in navigator)) return null; try { _swRegistration = await navigator.serviceWorker.register('./sw.js', { scope:'./' }); try{ await navigator.serviceWorker.ready; }catch{} return _swRegistration; } catch { return null; } }
 async function _showNow(id, title, body){ if (_swRegistration?.active){ try{ _swRegistration.active.postMessage({ type:'show-notification', id, title, body, tag:id, icon:window.__APP_ICON_192 }); return true; }catch{} } if (typeof Notification!=='undefined' && Notification.permission==='granted'){ try{ new Notification(title, { body, tag:String(id), dir:'rtl', lang:'ar' }); return true; }catch{ return false; } } return false; }
 function _loadScheduled(){ try{ const raw = localStorage.getItem(STORAGE_SCHEDULED); if (!raw) return {}; return JSON.parse(raw) ?? {}; } catch { return {}; } }
 function _saveScheduled(map){ try{ localStorage.setItem(STORAGE_SCHEDULED, JSON.stringify(map)); }catch{} }
@@ -3857,6 +3857,23 @@ function renderApp(){
   });
   routeAfterLogin();
 }
+
+// ===== الاتصال/المزامنة: تسجيل SW مبكراً، ومزامنة فورية عند عودة الإنترنت =====
+(function(){
+  try{ if ('serviceWorker' in navigator) window.addEventListener('load', ()=>{ _registerServiceWorker().catch(()=>{}); }); }catch{}
+  const kick = ()=>{ try{ OfflineSync.trySync(); }catch{} try{ RealtimeSync.instance.refresh?.().then(()=>RealtimeSync.instance.pullAll?.()).catch(()=>{}); }catch{} };
+  window.addEventListener('online', ()=>{ setConn(true); kick(); try{ navigator.serviceWorker?.ready.then(r=>r.sync?.register('sync-pending')).catch(()=>{}); }catch{} });
+  window.addEventListener('offline', ()=>setConn(false));
+  try{ navigator.serviceWorker?.addEventListener('message', e=>{ if (e.data?.type==='sync-now') kick(); }); }catch{}
+  function setConn(on){
+    let b=document.getElementById('conn-bar');
+    if (on){ if (b){ b.textContent='عاد الاتصال — تتم مزامنة البيانات...'; b.style.background='#2E7D32'; setTimeout(()=>b&&b.remove(), 2500); } return; }
+    if (!b){ b=document.createElement('div'); b.id='conn-bar'; b.style.cssText='position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:99998;text-align:center;font-size:12.5px;padding:4px 8px;color:#fff;background:#E65100;font-family:inherit'; document.body.appendChild(b); }
+    b.style.background='#E65100'; b.textContent='لا يوجد اتصال — تُحفظ التغييرات على الجهاز وتُرسل تلقائياً عند عودة الإنترنت';
+  }
+  document.addEventListener('DOMContentLoaded', ()=>{ if (navigator.onLine===false) setConn(false); });
+})();
+
 bootstrap().then(()=>{ renderApp(); setTimeout(hideSplash, 100); });
 </script>
 </body>
