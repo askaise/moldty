@@ -240,6 +240,38 @@ img,svg{max-width:100%}
 <div id="app-root"></div>
 <div id="overlay-root"></div>
 
+<script>
+(function(){
+  var done=false, lastErr='';
+  function card(msg){
+    if(done) return;
+    var sp=document.getElementById('boot-splash'); if(!sp || document.getElementById('boot-recover')) return;
+    var d=document.createElement('div'); d.id='boot-recover';
+    d.style.cssText='position:absolute;left:20px;right:20px;top:50%;transform:translateY(-50%);background:#fff;color:#212121;border-radius:16px;padding:20px;text-align:center;font-family:inherit;direction:rtl';
+    d.innerHTML='<div style="font-size:17px;font-weight:700;margin-bottom:8px">تعذّر إكمال تشغيل التطبيق</div>'
+      +'<div style="font-size:14px;color:#616161;margin-bottom:14px;line-height:1.7">'+msg+'<br>بياناتك محفوظة على الجهاز ولن تُحذف.</div>'
+      +'<button id="br-retry" style="width:100%;padding:12px;border:0;border-radius:12px;background:#0D1B4C;color:#fff;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:8px">إعادة المحاولة</button>'
+      +'<button id="br-fix" style="width:100%;padding:12px;border:1px solid #0D1B4C;border-radius:12px;background:#fff;color:#0D1B4C;font-size:14px;font-weight:700;font-family:inherit">إصلاح (مسح الذاكرة المؤقتة للتطبيق)</button>'
+      +(lastErr?'<div dir="ltr" style="font-size:11px;color:#9E9E9E;margin-top:10px;word-break:break-all">'+String(lastErr).replace(/</g,'&lt;').slice(0,160)+'</div>':'');
+    sp.appendChild(d);
+    document.getElementById('br-retry').onclick=function(){ location.reload(); };
+    document.getElementById('br-fix').onclick=async function(){
+      try{ var regs=await navigator.serviceWorker.getRegistrations(); for(var i=0;i<regs.length;i++) await regs[i].unregister(); }catch(_){}
+      try{ var ks=await caches.keys(); for(var j=0;j<ks.length;j++) await caches.delete(ks[j]); }catch(_){}
+      location.reload();
+    };
+  }
+  window.__bootOk=function(){ done=true; clearTimeout(t); var r=document.getElementById('boot-recover'); if(r) r.remove(); };
+  var t=setTimeout(function(){ card('التحميل يستغرق وقتاً أطول من المعتاد، غالباً بسبب ضعف الإنترنت.'); }, 8000);
+  window.addEventListener('error', function(e){
+    if(done) return;
+    var el=e.target;
+    if(el && el!==window && el.tagName==='SCRIPT'){ if(/supabase/.test(el.src||'')){ lastErr='supabase-js failed to load'; card('تعذّر تحميل مكتبة أساسية (ضعف أو انقطاع الإنترنت).'); } return; }
+    if(e.message){ lastErr=e.message; card('حدث خطأ أثناء التشغيل.'); }
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){ if(!done) lastErr=(e.reason&&e.reason.message)||String(e.reason||''); });
+})();
+</script>
 <script type="module">
 // ============================================================================
 // 1) config
@@ -302,7 +334,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // supabase-js v2 لا يوفّر auth.currentUser ولا getSession() متزامنة — نحتفظ بنسخة محلية من المستخدم
 let _authUser = null;
 Object.defineProperty(sb.auth, 'currentUser', { get: () => _authUser, configurable: true });
-sb.auth.onAuthStateChange((event, session) => { _authUser = session?.user ?? null; });
+sb.auth.onAuthStateChange((event, session) => { if (session?.user) _authUser = session.user; else if (event === 'SIGNED_OUT') _authUser = null; });
 
 // ============================================================================
 // 4) utils + helpers
@@ -3949,8 +3981,16 @@ function routeAfterLogin(){
   _shellTabIndex = 0;
   _enterApp();
 }
+function _cachedAuthUser(){
+  try{ for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if (k && /^sb-.*-auth-token$/.test(k)){ const j=JSON.parse(localStorage.getItem(k)); const u = j?.user ?? j?.currentSession?.user ?? null; if (u?.id) return u; } } }catch{}
+  return null;
+}
 async function bootstrap(){
-  try { const { data } = await sb.auth.getSession(); _authUser = data?.session?.user ?? null; } catch {}
+  try {
+    const r = await Promise.race([ sb.auth.getSession(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('getSession timeout')), 4000)) ]);
+    _authUser = r?.data?.session?.user ?? null;
+  } catch {}
+  if (!_authUser) _authUser = _cachedAuthUser(); // دخول بلا إنترنت: نستخدم الجلسة المحفوظة بدل شاشة الدخول
   try {
     await DevicePermissions.init();
     await LegacyMoneyRule.init();
@@ -3967,7 +4007,7 @@ async function bootstrap(){
   document.addEventListener('click', ()=>{ if (typeof Notification!=='undefined' && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch{} } }, { once:true });
   hideSplash();
 }
-function hideSplash(){ const s = document.getElementById('boot-splash'); if (s){ s.classList.add('hidden'); setTimeout(()=>s.remove(), 300); } }
+function hideSplash(){ try{ window.__bootOk && window.__bootOk(); }catch{} const s = document.getElementById('boot-splash'); if (s){ s.classList.add('hidden'); setTimeout(()=>s.remove(), 300); } }
 function renderApp(){
   sb.auth.onAuthStateChange((event, sess)=>{
     if (event === 'SIGNED_OUT'){ _routedUid = null; renderLoginScreen(appRoot); return; }
