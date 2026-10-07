@@ -42,17 +42,24 @@ self.addEventListener('fetch', (e) => {
   // لا نتدخل في طلبات قاعدة البيانات/الـ API (Supabase) — المزامنة يتولاها التطبيق
   if (url.hostname.endsWith('supabase.co') || url.hostname.endsWith('supabase.in')) return;
 
-  // صفحة التطبيق: الشبكة أولاً (للحصول على آخر نسخة) ثم النسخة المخزّنة عند انقطاع الإنترنت
+  // صفحة التطبيق: الشبكة أولاً لكن بمهلة قصيرة (2.5 ثانية) — إن تأخرت الشبكة تُعرض النسخة المخزّنة فوراً
+  // وتتحدّث النسخة المخزّنة في الخلفية، فلا ينتظر المستخدم عند ضعف الإنترنت
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
+      const c = await caches.open(CACHE);
+      const cached = (await c.match('./index.html')) || (await c.match('./'));
+      const net = fetch(req).then((r) => { if (r && r.ok) c.put('./index.html', r.clone()); return r; });
+      if (!cached) {
+        try { return await net; }
+        catch (_) {
+          return new Response('التطبيق غير متاح دون اتصال بعد. افتحه مرة واحدة مع الإنترنت.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        }
+      }
+      net.catch(() => {});
       try {
-        const r = await fetch(req);
-        const c = await caches.open(CACHE);
-        c.put('./index.html', r.clone());
-        return r;
+        return await Promise.race([net, new Promise((_, rej) => setTimeout(rej, 2500))]);
       } catch (_) {
-        return (await caches.match('./index.html')) || (await caches.match('./')) ||
-          new Response('التطبيق غير متاح دون اتصال بعد. افتحه مرة واحدة مع الإنترنت.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+        return cached;
       }
     })());
     return;
