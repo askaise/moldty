@@ -63,16 +63,12 @@
 })();
 </script>
 
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 /* ============ base.css ============ */
@@ -266,7 +262,7 @@ img,svg{max-width:100%}
   window.addEventListener('error', function(e){
     if(done) return;
     var el=e.target;
-    if(el && el!==window && el.tagName==='SCRIPT'){ if(/supabase/.test(el.src||'')){ lastErr='supabase-js failed to load'; card('تعذّر تحميل مكتبة أساسية (ضعف أو انقطاع الإنترنت).'); } return; }
+    if(el && el!==window){ return; }
     if(e.message){ lastErr=e.message; card('حدث خطأ أثناء التشغيل.'); }
   }, true);
   window.addEventListener('unhandledrejection', function(e){ if(!done) lastErr=(e.reason&&e.reason.message)||String(e.reason||''); });
@@ -328,13 +324,95 @@ const Prefs = {
 // ============================================================================
 // 3) supabase-client
 // ============================================================================
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
-});
-// supabase-js v2 لا يوفّر auth.currentUser ولا getSession() متزامنة — نحتفظ بنسخة محلية من المستخدم
+// <<FACADE
+// المكتبات الخارجية تُحمَّل في الخلفية (من كاش الـ service worker عادةً) فيبدأ التطبيق فوراً من البيانات المحلية
+const _LIB_URL = {
+  supabase:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  jspdf:'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+  qrcode:'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+  jsqr:'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js',
+  xlsx:'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+};
+const _LIB_CHECK = { supabase:()=>window.supabase, jspdf:()=>window.jspdf, qrcode:()=>window.QRCode, jsqr:()=>window.jsQR, xlsx:()=>window.XLSX };
+const _libP = {};
+function needLib(name){
+  if (_LIB_CHECK[name]()) return Promise.resolve();
+  if (_libP[name]) return _libP[name];
+  return (_libP[name] = new Promise((resolve, reject)=>{
+    const el = document.createElement('script'); el.src = _LIB_URL[name]; el.async = true;
+    el.onload = ()=>resolve();
+    el.onerror = ()=>{ el.remove(); delete _libP[name]; reject(new Error('تعذّر تحميل المكتبة: '+name)); };
+    document.head.appendChild(el);
+  }));
+}
 let _authUser = null;
-Object.defineProperty(sb.auth, 'currentUser', { get: () => _authUser, configurable: true });
+let _sbReal = null, _sbReadyResolve;
+const _sbReady = new Promise(r=>{ _sbReadyResolve = r; });
+const _authListeners = [];
+function _attachAuth(e){ if (e.dead || e.sub) return; const { data } = _sbReal.auth.onAuthStateChange((ev, sess)=>{ if (!e.dead) e.cb(ev, sess); }); e.sub = data.subscription; }
+async function _initSupabase(){
+  const delays = [0, 1500, 4000, 8000, 15000, 30000];
+  for (let i=0;;i++){
+    try { await needLib('supabase'); break; }
+    catch {
+      await new Promise(res=>{ const t = setTimeout(res, delays[Math.min(i, delays.length-1)]); window.addEventListener('online', ()=>{ clearTimeout(t); res(); }, { once:true }); });
+    }
+  }
+  _sbReal = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+  });
+  _authListeners.forEach(_attachAuth);
+  _sbReadyResolve(_sbReal);
+}
+const _sleepNull = (ms)=>new Promise(r=>setTimeout(()=>r(null), ms));
+const _sbWhenReady = (ms=8000)=>Promise.race([ _sbReady, _sleepNull(ms) ]);
+const _NOT_LOADED = ()=>({ data:null, error:{ message:'timeout: supabase not loaded (offline)', code:'' } });
+// تسجّل الاستدعاءات وتنفّذها عند جاهزية المكتبة؛ إن تأخّرت أكثر من المهلة تُرجع خطأ «قابل لإعادة المحاولة» فيبقى التعديل في الطابور
+function _lazyChain(rootFn){
+  const calls = []; let pr = null;
+  const run = ()=> pr || (pr = _sbWhenReady().then(c=>{ if (!c) return _NOT_LOADED(); let o = rootFn(c); for (const [n,a] of calls) o = o[n](...a); return o; }));
+  const p = new Proxy({}, { get(_, prop){
+    if (prop==='then') return (a,b)=>run().then(a,b);
+    if (prop==='catch') return (f)=>run().catch(f);
+    if (prop==='finally') return (f)=>run().finally(f);
+    if (typeof prop==='symbol') return undefined;
+    return (...args)=>{ calls.push([prop,args]); return p; };
+  }});
+  return p;
+}
+function _localLogout(){
+  try{ const del=[]; for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if (k && /^sb-.*-auth-token/.test(k)) del.push(k); } del.forEach(k=>localStorage.removeItem(k)); }catch{}
+  _authUser = null;
+  _authListeners.slice().forEach(e=>{ if (!e.dead) { try{ e.cb('SIGNED_OUT', null); }catch{} } });
+}
+const sb = {
+  auth: {
+    get currentUser(){ return _authUser; },
+    onAuthStateChange(cb){
+      const e = { cb, sub:null, dead:false }; _authListeners.push(e); if (_sbReal) _attachAuth(e);
+      return { data:{ subscription:{ unsubscribe(){ e.dead = true; try{ e.sub?.unsubscribe(); }catch{} } } } };
+    },
+    async getSession(){ const c = await _sbWhenReady(); return c ? c.auth.getSession() : { data:{ session:null }, error:{ message:'timeout: supabase not loaded' } }; },
+    async refreshSession(...a){ const c = await _sbWhenReady(); return c ? c.auth.refreshSession(...a) : { data:{ session:null, user:null }, error:{ message:'timeout: supabase not loaded' } }; },
+    async signInWithOAuth(...a){ const c = await _sbWhenReady(10000); return c ? c.auth.signInWithOAuth(...a) : { data:null, error:{ message:'تعذّر تحميل مكتبة الدخول — تحقّق من اتصال الإنترنت ثم أعد المحاولة' } }; },
+    async signOut(...a){ if (_sbReal) return _sbReal.auth.signOut(...a); _localLogout(); return { error:null }; },
+  },
+  from: (t)=>_lazyChain(c=>c.from(t)),
+  rpc: (...a)=>_lazyChain(c=>c.rpc(...a)),
+  storage: { from: (b)=>_lazyChain(c=>c.storage.from(b)) },
+  channel(name){
+    const ops = [];
+    const h = { _real:null, _dead:false,
+      on(...a){ ops.push(a); return h; },
+      subscribe(cb){ _sbReady.then(c=>{ if (h._dead) return; let ch = c.channel(name); for (const a of ops) ch = ch.on(...a); h._real = ch; ch.subscribe(cb); }); return h; },
+    };
+    return h;
+  },
+  removeChannel(h){ if (h && h._real && _sbReal) return _sbReal.removeChannel(h._real); if (h) h._dead = true; return Promise.resolve('ok'); },
+};
 sb.auth.onAuthStateChange((event, session) => { if (session?.user) _authUser = session.user; else if (event === 'SIGNED_OUT') _authUser = null; });
+_initSupabase();
+// FACADE>>
 
 // ============================================================================
 // 4) utils + helpers
@@ -1222,6 +1300,7 @@ const ReceiptCodeService = {
   },
 };
 async function buildReceiptQrDataUrl(data, sizePx=240){
+  await needLib('qrcode').catch(()=>{});
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     if (!window.QRCode || typeof window.QRCode.toCanvas!=='function'){ reject(new Error('مكتبة QR غير محمَّلة')); return; }
@@ -3073,7 +3152,7 @@ async function renderWorkersScreen(container){
 // ============================================================================
 // 28) pos-receipt-pdf
 // ============================================================================
-const { jsPDF } = window.jspdf;
+async function newPdf(opts){ await needLib('jspdf'); return new window.jspdf.jsPDF(opts); }
 function _posMoney(v){ return `${formatMoney(v)} د.ع`; }
 function _posDateAr(d){ return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; }
 function posSafeText(s){ if (!s) return ''; return String(s).replace(/[•▪◦]/g, ' ').replace(/\s+/g, ' ').trim(); }
@@ -3103,7 +3182,7 @@ async function _posBody(doc, { pageWidth, margin, y, generatorName, title, rows,
 async function buildPosPaymentReceiptPdf({ s, row, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
   const fmt = posPageFormat();
-  const doc = new jsPDF({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
+  const doc = await newPdf({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
   await ensureArabicFont(doc);
   const pageWidth = fmt.widthPt, margin = fmt.marginL;
   let qrDataUrl = null;
@@ -3124,7 +3203,7 @@ async function buildPosPaymentReceiptPdf({ s, row, generatorName=null }){
 async function buildPosPreviousDebtReceiptPdf({ s, paidNow, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
   const fmt = posPageFormat();
-  const doc = new jsPDF({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
+  const doc = await newPdf({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
   await ensureArabicFont(doc);
   const pageWidth = fmt.widthPt, margin = fmt.marginL;
   const remaining = s.previousDebtRemaining; const settled = remaining<=0.01;
@@ -3144,7 +3223,7 @@ async function buildPosPreviousDebtReceiptPdf({ s, paidNow, generatorName=null }
 async function buildPosStatementPdf({ s, rows:debtRows, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
   const fmt = posPageFormat();
-  const doc = new jsPDF({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
+  const doc = await newPdf({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
   await ensureArabicFont(doc);
   const pageWidth = fmt.widthPt, margin = fmt.marginL;
   const monthsDebt = debtRows.reduce((sum,r)=>sum+r.remaining, 0);
@@ -3161,7 +3240,7 @@ class PosPaidMonthPart { constructor(month, paidNow){ this.month=month; this.pai
 async function buildPosCombinedReceiptPdf({ s, paidPrevious, monthParts, history, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
   const fmt = posPageFormat();
-  const doc = new jsPDF({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
+  const doc = await newPdf({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
   await ensureArabicFont(doc);
   const pageWidth = fmt.widthPt, margin = fmt.marginL;
   const SubKey = m => { const d = m instanceof Date ? m : new Date(m); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
@@ -3185,7 +3264,7 @@ async function buildPosCombinedReceiptPdf({ s, paidPrevious, monthParts, history
 async function buildPosDesignPreviewPdf({ title='نموذج وصل استلام' } = {}){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
   const fmt = posPageFormat();
-  const doc = new jsPDF({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
+  const doc = await newPdf({ unit:'pt', format:[fmt.widthPt, fmt.heightPt], orientation:'portrait' });
   await ensureArabicFont(doc);
   const pageWidth = fmt.widthPt, margin = fmt.marginL;
   const issuer = settings.effectiveIssuerName();
@@ -3317,7 +3396,7 @@ function _rcptInfoTable(doc, pairs, pageWidth, margin, y, colSplit=0.4){
 }
 async function buildPaymentReceiptPdf({ s, row, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
-  const doc = new jsPDF({ unit:'pt', format:'a5' }); await ensureArabicFont(doc);
+  const doc = await newPdf({ unit:'pt', format:'a5' }); await ensureArabicFont(doc);
   const pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight(), margin = 40;
   const issuerName = settings.showGeneratorNameOnReceipt ? settings.effectiveIssuerName(generatorName) : '';
   let qrDataUrl = null;
@@ -3347,7 +3426,7 @@ async function buildPaymentReceiptPdf({ s, row, generatorName=null }){
 }
 async function buildPreviousDebtReceiptPdf({ s, paidNow, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
-  const doc = new jsPDF({ unit:'pt', format:'a5' }); await ensureArabicFont(doc);
+  const doc = await newPdf({ unit:'pt', format:'a5' }); await ensureArabicFont(doc);
   const pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight(), margin = 40;
   const issuerName = settings.showGeneratorNameOnReceipt ? settings.effectiveIssuerName(generatorName) : '';
   const remaining = s.previousDebtRemaining; const settled = remaining<=0.01;
@@ -3372,7 +3451,7 @@ async function buildPreviousDebtReceiptPdf({ s, paidNow, generatorName=null }){
 }
 async function buildStatementPdf({ s, rows, generatorName=null }){
   const settings = PosPrinterService.instance; await settings.ensureLoaded();
-  const doc = new jsPDF({ unit:'pt', format:'a4' }); await ensureArabicFont(doc);
+  const doc = await newPdf({ unit:'pt', format:'a4' }); await ensureArabicFont(doc);
   const pageWidth = doc.internal.pageSize.getWidth(), margin = 40;
   const issuerName = settings.showGeneratorNameOnReceipt ? settings.effectiveIssuerName(generatorName) : '';
   let y = _rcptHeader(doc, issuerName, 'كشف حساب المشترك', pageWidth, margin);
@@ -3432,6 +3511,7 @@ async function showReceiptMonthPicker(s, rows, { generatorName=null } = {}){
 // 30) QR scan / code entry / transfer
 // ============================================================================
 function renderQrScannerScreen(container, { onDone } = {}){
+  needLib('jsqr').catch(()=>{});
   let processing=false, error=null, stream=null, rafId=null, videoEl=null, canvasEl=null, ctx=null;
   const root = document.createElement('div'); root.className='screen'; root.style.background='#000'; root.style.color='#fff';
   const handleDetect = async (raw)=>{
@@ -3618,8 +3698,8 @@ function renderQrSessionTransferScreen(container, { onBack } = {}){
     const presetName = presetIndex>=0 ? kPermPresets[presetIndex].name : `مخصَّصة (${granted.length} من ${Object.keys(Perm).length})`;
     root.innerHTML = `<div class="app-bar"><button class="icon-btn" id="cancel"><i class="fa-solid fa-xmark"></i></button><div class="title">تسجيل الدخول على هاتف آخر</div></div><div class="screen-body" style="text-align:center"><i class="fa-solid fa-shield-halved" style="font-size:42px;color:var(--green)"></i><h3 style="margin:10px 0 6px">هذا الرمز مخصص لصاحب الحساب فقط</h3><p style="color:#616161;font-size:14px;line-height:1.5;margin:0">اعرضه مباشرة أمام الهاتف الجديد ولا ترسله إلى أي شخص آخر.<br>صلاحية رمز النقل 5 دقائق فقط.</p><div style="font-weight:600;margin-top:10px;font-size:13.5px">الصلاحيات: ${_esc(presetName)}</div>${deviceName.trim() ? `<div style="font-size:12.5px;color:#616161;margin-top:4px"><i class="fa-solid fa-mobile-screen"></i> ${_esc(deviceName.trim())}</div>` : ''}<div style="background:#fff;border-radius:20px;border:1px solid #E0E0E0;box-shadow:var(--shadow-lg);display:inline-block;padding:18px;margin:16px 0"><canvas id="qr-canvas" style="display:block;max-width:100%"></canvas></div><button class="btn btn-outline btn-block" id="copy-btn" style="min-height:50px"><i class="fa-solid fa-copy"></i> نسخ كود التفعيل</button><button class="btn btn-block" id="change-perms-btn" style="margin-top:8px"><i class="fa-solid fa-sliders"></i> تغيير الصلاحيات</button><button class="btn btn-block" id="cancel-btn" style="margin-top:8px">إلغاء</button></div>`;
     const canvas = root.querySelector('#qr-canvas');
-    if (window.QRCode && typeof window.QRCode.toCanvas==='function'){ window.QRCode.toCanvas(canvas, qrData, { width:280, margin:1, errorCorrectionLevel:'M', color:{ dark:'#000000', light:'#FFFFFF' } }, (err)=>{ if (err){ snackbar('تعذر توليد رمز QR: ' + err.message); return; } }); }
-    else { canvas.parentElement.innerHTML = '<div style="color:var(--red);padding:20px">تعذر تحميل مكتبة QR.</div>'; }
+    needLib('qrcode').catch(()=>{}).then(()=>{ if (window.QRCode && typeof window.QRCode.toCanvas==='function'){ window.QRCode.toCanvas(canvas, qrData, { width:280, margin:1, errorCorrectionLevel:'M', color:{ dark:'#000000', light:'#FFFFFF' } }, (err)=>{ if (err){ snackbar('تعذر توليد رمز QR: ' + err.message); return; } }); }
+    else { canvas.parentElement.innerHTML = '<div style="color:var(--red);padding:20px">تعذر تحميل مكتبة QR.</div>'; } });
     root.querySelector('#cancel').onclick = ()=>onBack?.();
     root.querySelector('#cancel-btn').onclick = ()=>onBack?.();
     root.querySelector('#copy-btn').onclick = copyCode;
@@ -3638,6 +3718,7 @@ function renderQrSessionTransferScreen(container, { onBack } = {}){
 // 31) receipt code scanner
 // ============================================================================
 function renderReceiptCodeScannerScreen(container, { onBack } = {}){
+  needLib('jsqr').catch(()=>{});
   let busy=false, stream=null, rafId=null, videoEl=null, canvasEl=null, ctx=null;
   const root = document.createElement('div'); root.className='screen'; root.style.background='#000'; root.style.color='#fff';
   const stopCamera = ()=>{ if (rafId){ cancelAnimationFrame(rafId); rafId=null; } if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } };
@@ -3911,7 +3992,8 @@ function pickSubscribersExcelBytes(){
   });
 }
 async function importSubscribersFromExcelBytes(bytes){
-  if (!window.XLSX) throw new Error('مكتبة XLSX غير محمَّلة — تحقّق من index.html');
+  await needLib('xlsx').catch(()=>{});
+  if (!window.XLSX) throw new Error('مكتبة XLSX غير محمَّلة — تحقّق من الاتصال بالإنترنت');
   let workbook;
   try { workbook = window.XLSX.read(bytes, { type:'array' }); } catch (e){ throw new Error('الملف ليس ملف إكسل صالحاً (.xlsx)'); }
   const sheetName = workbook.SheetNames?.[0];
@@ -3986,11 +4068,12 @@ function _cachedAuthUser(){
   return null;
 }
 async function bootstrap(){
-  try {
-    const r = await Promise.race([ sb.auth.getSession(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('getSession timeout')), 4000)) ]);
-    _authUser = r?.data?.session?.user ?? null;
-  } catch {}
-  if (!_authUser) _authUser = _cachedAuthUser(); // دخول بلا إنترنت: نستخدم الجلسة المحفوظة بدل شاشة الدخول
+  // نبدأ فوراً بالمستخدم المحفوظ على الجهاز؛ تُحدَّث الجلسة لاحقاً عند اكتمال تحميل المكتبة
+  _authUser = _cachedAuthUser();
+  // العودة من تسجيل الدخول عبر Google (الرابط يحمل code): ننتظر إتمام تبادل الجلسة قليلاً
+  if (/[?&]code=|access_token=|error_description=/.test(location.search + location.hash)){
+    try { const r = await Promise.race([ sb.auth.getSession(), _sleepNull(12000) ]); if (r?.data?.session?.user) _authUser = r.data.session.user; } catch {}
+  }
   try {
     await DevicePermissions.init();
     await LegacyMoneyRule.init();
@@ -4005,6 +4088,8 @@ async function bootstrap(){
   } catch (e){ console.error('bootstrap error', e); }
   // طلب إذن الإشعارات يحتاج نقرة من المستخدم
   document.addEventListener('click', ()=>{ if (typeof Notification!=='undefined' && Notification.permission==='default'){ try{ Notification.requestPermission(); }catch{} } }, { once:true });
+  try { navigator.storage?.persist?.(); } catch {}
+  setTimeout(()=>{ ['qrcode','jsqr','jspdf','xlsx'].reduce((p,n)=>p.then(()=>needLib(n).catch(()=>{})), Promise.resolve()); }, 3000);
   hideSplash();
 }
 function hideSplash(){ try{ window.__bootOk && window.__bootOk(); }catch{} const s = document.getElementById('boot-splash'); if (s){ s.classList.add('hidden'); setTimeout(()=>s.remove(), 300); } }
