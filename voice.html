@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0D1B4C" />
+<title>تحدث مع التطبيق — إدارة مولدي</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+/* ============ نفس متغيرات ومكوّنات تصميم الموقع الرئيسي (base/layout/components) ============ */
+:root{--navy:#0D1B4C;--navy-700:#1B2C6A;--amber:#FFC107;--amber-700:#FFA000;--green:#2E7D32;--green-50:#E8F5E9;--green-100:#C8E6C9;--red:#D32F2F;--red-50:#FFEBEE;--red-100:#FFCDD2;--orange:#EF6C00;--orange-50:#FFF3E0;--orange-100:#FFE0B2;--purple:#6A1B9A;--blue-grey:#546E7A;--teal:#00796B;--bg:#F3F4F8;--surface:#FFFFFF;--text:#1A1A1A;--muted:#616161;--divider:#E0E0E0;--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;--shadow-sm:0 1px 3px rgba(0,0,0,.08);--shadow-md:0 3px 10px rgba(0,0,0,.10);--shadow-lg:0 8px 24px rgba(0,0,0,.14);--font:'Noto Naskh Arabic','Segoe UI',Tahoma,sans-serif;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;font-family:var(--font);color:var(--text);background:var(--bg);overscroll-behavior-y:contain;-webkit-font-smoothing:antialiased}
+body{font-size:15px;line-height:1.5}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+.screen{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+.screen-body{flex:1;overflow-y:auto;padding:16px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.app-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--navy);color:#fff;box-shadow:var(--shadow-sm);position:sticky;top:0;z-index:30}
+.app-bar .title{font-size:18px;font-weight:700;flex:1;text-align:start}
+.app-bar button.icon-btn{background:none;border:0;color:inherit;padding:8px;border-radius:50%;font-size:18px;cursor:pointer}
+.app-bar button.icon-btn:hover{background:rgba(255,255,255,.12)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;min-height:44px;transition:transform .05s,background .15s}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--navy);color:#fff}
+.btn-green{background:var(--green);color:#fff}
+.btn-red{background:var(--red);color:#fff}
+.btn-tonal{background:#E3E6F0;color:var(--navy)}
+.btn-outline{background:transparent;color:var(--navy);border:1.5px solid var(--navy)}
+.btn-block{width:100%}
+.toast-float{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 20px);padding:12px 18px;border-radius:12px;color:#fff;text-align:center;font-size:14px;z-index:500;pointer-events:none;animation:toast-fade 3.2s ease forwards}
+.toast-float.ok{background:#2E7D32}
+.toast-float.err{background:#D32F2F}
+@keyframes toast-fade{0%{opacity:0;transform:translateY(6px)}8%{opacity:1;transform:translateY(0)}90%{opacity:1}100%{opacity:0;transform:translateY(-6px)}}
+
+/* ============ مكوّنات خاصة بشاشة الصوت (مطابقة لـ voice_screen.dart) ============ */
+.voice-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:4px}
+.voice-idle-text{font-size:22px;font-weight:700}
+.voice-rec-icon{font-size:56px;color:var(--red)}
+.voice-rec-timer{font-size:20px;font-weight:700;margin-top:12px}
+.voice-rec-hint{font-size:16px;margin-top:8px}
+.voice-spinner{font-size:34px;color:var(--navy)}
+.voice-stage-text{font-size:18px;margin-top:16px}
+.voice-status-icon{font-size:48px}
+.voice-status-text{font-size:18px;text-align:center;margin-top:12px;line-height:1.6}
+.voice-transcript{margin-top:10px;margin-bottom:2px;font-size:14px;font-style:italic;color:#757575;text-align:center}
+.voice-candidates{display:flex;flex-direction:column;gap:8px;width:100%;max-width:420px;margin-top:16px}
+.voice-candidates button{width:100%;padding:16px;font-size:18px}
+.voice-confirm-row{display:flex;gap:16px;margin-top:24px;width:100%;max-width:420px}
+.voice-confirm-row .btn{flex:1;padding:20px;font-size:36px}
+.voice-bottom{padding:16px 24px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:10px}
+.mic-btn{width:110px;height:110px;border-radius:50%;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:48px;box-shadow:0 8px 24px rgba(0,0,0,.26);background:var(--navy);transition:background .15s,transform .05s}
+.mic-btn:active{transform:scale(.97)}
+.mic-btn.recording{background:var(--red)}
+.voice-result-actions{width:100%;max-width:420px;display:flex;flex-direction:column;gap:10px}
+.voice-cancel-link{background:none;border:0;color:var(--navy);font-weight:700;font-size:15px;cursor:pointer;margin-top:14px;padding:10px}
+</style>
+</head>
+<body>
+<div id="overlay-root"></div>
+<div id="app-root">
+  <div class="screen" style="align-items:center;justify-content:center">
+    <i class="fa-solid fa-spinner fa-spin" style="font-size:32px;color:var(--navy)"></i>
+  </div>
+</div>
+
+<script type="module">
+// ============================================================================
+// تحدث مع التطبيق — صفحة مستقلة متوافقة مع الموقع الرئيسي (نفس التصميم، نفس
+// مفاتيح التخزين المحلي، ونفس صيغة المزامنة مع Supabase). لا تُعدِّل هذه
+// الصفحة الموقع الرئيسي إطلاقاً — تقرأ وتكتب فقط بنفس الصيغة التي يقرأها
+// ويكتبها هو، بحيث تظهر أي عملية صوتية فوراً عند فتح الموقع الرئيسي.
+//
+// خط الأنابيب (مطابق لِـ groq_transcription_service.dart +
+// gemini_intent_service.dart + voice_ai_pipeline.dart):
+//   تسجيل صوت ──[Supabase Edge Function: voice-ai / op=transcribe]──▶ نص
+//              ──[Supabase Edge Function: voice-ai / op=intent]──▶ JSON
+// منطق الأوامر (مطابق لِـ voice_command_handler.dart) ومنطق الواجهة (مطابق
+// لِـ voice_screen.dart) منقولان هنا بالضبط.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// 1) إعداد عام (نفس بيانات الموقع الرئيسي)
+// ---------------------------------------------------------------------------
+const SUPABASE_URL      = 'https://rxbttmldpvsiquppvztp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_aJjDTDXrMsWFFsZZdW8nKg__1MSzuHV';
+const VOICE_FN          = 'voice-ai';
+const MAX_RECORD_SECONDS = 30;
+const MIN_AUDIO_BYTES = 3000;
+const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
+const TRANSCRIBE_TIMEOUT_MS = 30000;
+const INTENT_TIMEOUT_MS = 20000;
+const MAX_RETRIES = 2;
+const MIN_CONFIDENCE = 0.55;
+const MAX_AMP_PRICE = 100000;
+const REPLAY_MESSAGE = 'ما فهمت، عيد المحاولة.';
+
+// ---------------------------------------------------------------------------
+// 2) تخزين محلي (نفس Prefs الموجود في الموقع الرئيسي حرفياً)
+// ---------------------------------------------------------------------------
+const STORAGE_PREFIX = 'pref:';
+function _prefKey(k){ return STORAGE_PREFIX + k; }
+const Prefs = {
+  async getString(k){ return localStorage.getItem(_prefKey(k)); },
+  async setString(k,v){ localStorage.setItem(_prefKey(k), String(v)); },
+  async remove(k){ localStorage.removeItem(_prefKey(k)); },
+  async containsKey(k){ return localStorage.getItem(_prefKey(k)) !== null; },
+  async getBool(k){ const v = localStorage.getItem(_prefKey(k)); return v===null?null:v==='true'; },
+  async getKeys(){ const out=[]; for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if (k && k.startsWith(STORAGE_PREFIX)) out.push(k.substring(STORAGE_PREFIX.length)); } return out; },
+};
+function newLocalId(){
+  if (crypto && typeof crypto.randomUUID==='function') return crypto.randomUUID();
+  const b=new Uint8Array(16); crypto.getRandomValues(b); b[6]=(b[6]&0x0f)|0x40; b[8]=(b[8]&0x3f)|0x80;
+  const h=(s,e)=>[...b.slice(s,e)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  return `${h(0,4)}-${h(4,6)}-${h(6,8)}-${h(8,10)}-${h(10,16)}`;
+}
+const ARABIC_INDIC='٠١٢٣٤٥٦٧٨٩', PERSIAN='۰۱۲۳۴۵۶۷۸۹';
+function parseAmount(raw){
+  if (raw==null) return null;
+  const t=String(raw).trim(); if (!t) return null;
+  const out=[];
+  for (const ch of t){
+    const a=ARABIC_INDIC.indexOf(ch); if (a>=0){ out.push(String(a)); continue; }
+    const p=PERSIAN.indexOf(ch); if (p>=0){ out.push(String(p)); continue; }
+    if (ch==='٫'){ out.push('.'); continue; }
+    if (ch===','||ch==='٬'||ch==='،'||ch===' '||ch==='\u00A0'||ch==='_') continue;
+    out.push(ch);
+  }
+  const cleaned=out.join('');
+  if (!/^\d+(\.\d+)?$/.test(cleaned)) return null;
+  const v=parseFloat(cleaned); return (isFinite(v)&&!Number.isNaN(v)) ? v : null;
+}
+function formatMoney(v){
+  if (v==null || !isFinite(v)) return '0';
+  let s=Math.trunc(v).toString(); if (s==='-0') return '0';
+  const neg=s.startsWith('-'); if (neg) s=s.substring(1);
+  let out=''; for (let i=0;i<s.length;i++){ if (i>0 && (s.length-i)%3===0) out+=','; out+=s[i]; }
+  return neg?'-'+out:out;
+}
+function normalizeOptional(raw){ if (raw==null) return null; const t=String(raw).trim(); return t===''?null:t; }
+class KeyedLock {
+  static _chains = new Map();
+  static async run(key, fn){
+    const prev = this._chains.get(key) ?? Promise.resolve();
+    let resolveNext; const next = new Promise(res=>{ resolveNext=res; });
+    this._chains.set(key, next);
+    try { await prev; return await fn(); }
+    finally { resolveNext(); if (this._chains.get(key)===next) this._chains.delete(key); }
+  }
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// ---------------------------------------------------------------------------
+// 3) عميل Supabase — نفس الإعداد، يلتقط جلسة الدخول المحفوظة من الموقع
+//    الرئيسي تلقائياً (نفس المتصفح/الأصل)، دون الحاجة لتسجيل دخول جديد.
+// ---------------------------------------------------------------------------
+const sbReal = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:false },
+});
+let _authUser = null;
+function _cachedAuthUser(){
+  try{ for (let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if (k && /^sb-.*-auth-token$/.test(k)){ const j=JSON.parse(localStorage.getItem(k)); const u=j?.user ?? j?.currentSession?.user ?? null; if (u?.id) return u; } } }catch{}
+  return null;
+}
+_authUser = _cachedAuthUser();
+sbReal.auth.onAuthStateChange((event, sess)=>{ _authUser = sess?.user ?? null; });
+function currentUid(){ return _authUser?.id ?? null; }
+
+// ---------------------------------------------------------------------------
+// 4) الصلاحيات على هذا الجهاز (نفس DevicePermissions بالموقع الرئيسي)
+// ---------------------------------------------------------------------------
+const Perm = Object.freeze({ viewDashboard:0, viewPrices:1, editPrices:2, manageExpenses:3, viewSubscribers:4, addSubscriber:5, editSubscriber:6, deleteSubscriber:7, recordPayments:8, applyDiscount:9, reversePayments:10, editPreviousDebt:11, issueReceipts:12, manageData:13, transferSession:14, manageAccount:15 });
+const PermTitles = { [Perm.viewDashboard]:'الشاشة الرئيسية والإحصائيات', [Perm.viewPrices]:'رؤية أسعار الأمبير', [Perm.editPrices]:'تعديل سعر الأمبير', [Perm.manageExpenses]:'المصروفات والعمّال', [Perm.viewSubscribers]:'تبويب المشتركين', [Perm.addSubscriber]:'إضافة مشترك', [Perm.editSubscriber]:'تعديل بيانات المشترك', [Perm.deleteSubscriber]:'حذف مشترك', [Perm.recordPayments]:'تسجيل الدفعات (المحاسبة)', [Perm.applyDiscount]:'منح الخصومات', [Perm.reversePayments]:'إلغاء الدفعات والتراجع', [Perm.editPreviousDebt]:'تعديل الدين السابق', [Perm.issueReceipts]:'إصدار الوصولات والكشوف', [Perm.manageData]:'استيراد/إعادة تعيين البيانات', [Perm.transferSession]:'إنشاء أكواد دخول لأجهزة أخرى', [Perm.manageAccount]:'اشتراك التطبيق والدفع' };
+const _DP_KEY = 'device_permissions_v1';
+const DevicePermissions = {
+  allMask: (()=>{ let m=0; for (const k in Perm) m |= 1<<Perm[k]; return m; })(),
+  _restrictedUid:null, _mask:0,
+  async init(){ try{ const raw=await Prefs.getString(_DP_KEY); if (raw){ const j=JSON.parse(raw); this._restrictedUid=j.uid??null; this._mask=(j.mask??0)|0; } }catch{} },
+  get currentMask(){ const r=this._restrictedUid; if (r!=null && r===currentUid()) return this._mask; return this.allMask; },
+  has(p){ return (this.currentMask & (1<<p))!==0; },
+  require(p){ if (!this.has(p)){ const e=new Error(`ليس لديك صلاحية: ${PermTitles[p]}`); e.code='PERMISSION_DENIED'; throw e; } },
+};
+
+// ---------------------------------------------------------------------------
+// 5) حالة الاشتراك (قراءة فقط — نفس SubStatusCache) لتقرير المزامنة الفورية
+// ---------------------------------------------------------------------------
+const AppSubStatus = Object.freeze({ trial:'trial', active:'active', expired:'expired' });
+function _statusKey(uid){ return `sub_status_v2_${uid}`; }
+async function subStatusIsActive(){
+  const uid = currentUid(); if (!uid) return false;
+  const raw = await Prefs.getString(_statusKey(uid)); if (!raw) return false;
+  try {
+    const j = JSON.parse(raw); const now = new Date();
+    if (j.status===AppSubStatus.expired) return false;
+    if (j.status===AppSubStatus.trial) return new Date(j.trialEnd) > now;
+    if (j.status===AppSubStatus.active) return !j.subscriptionEnd || new Date(j.subscriptionEnd) > now;
+  } catch {}
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// 6) مزامنة في الخلفية (نفس صيغة OfflineSync بالموقع الرئيسي) — كل عملية
+//    تُضاف أولاً لطابور الانتظار المشترك (نفس مفتاح الموقع الرئيسي)، ثم
+//    نحاول رفعها فوراً إن أمكن. أي عملية تبقى في الطابور سيلتقطها الموقع
+//    الرئيسي تلقائياً في زيارته القادمة.
+// ---------------------------------------------------------------------------
+function _pendingKey(){ return `sync_pending_ops_v1_${currentUid() ?? 'anon'}`; }
+async function _loadPending(){ const raw=await Prefs.getString(_pendingKey()); if (!raw) return []; try{ return JSON.parse(raw) ?? []; }catch{ return []; } }
+async function _savePending(ops){ await Prefs.setString(_pendingKey(), JSON.stringify(ops)); }
+async function enqueueSync(table, action, data){
+  await KeyedLock.run(_pendingKey(), async ()=>{ const ops=await _loadPending(); ops.push({ id:newLocalId(), table, action, data }); await _savePending(ops); });
+  trySyncNow().catch(()=>{});
+}
+function _isTransientSyncError(e){
+  const code=String(e?.code??''); const msg=String(e?.message??'').toLowerCase(); const status=Number(e?.status??0);
+  if (code==='PGRST301'||code==='PGRST302') return true;
+  if (msg.includes('jwt')||(msg.includes('token')&&msg.includes('expired'))) return true;
+  if (code==='408'||code==='429'||status===408||status===429||status>=500) return true;
+  if (msg.includes('timeout')||msg.includes('temporar')||msg.includes('unavailable')||msg.includes('fetch')||msg.includes('network')) return true;
+  if (typeof navigator!=='undefined' && navigator.onLine===false) return true;
+  return false;
+}
+async function _executeSyncOp(op){
+  const { table, action, data } = op;
+  if (action==='insert'){ const { error } = await sbReal.from(table).insert(data); if (error) throw error; }
+  else if (action==='upsert'){ const { error } = await sbReal.from(table).upsert(data); if (error) throw error; }
+  else if (action==='update'){ let q=sbReal.from(table).update(data.values); for (const [k,v] of Object.entries(data.match??{})) q=q.eq(k,v); const { error }=await q; if (error) throw error; }
+  else if (action==='delete'){ let q=sbReal.from(table).delete(); for (const [k,v] of Object.entries(data.match??{})) q=q.eq(k,v); const { error }=await q; if (error) throw error; }
+}
+let _syncing=false;
+async function trySyncNow(){
+  if (_syncing) return; if (!currentUid()) return; if (!await subStatusIsActive()) return;
+  _syncing=true;
+  try {
+    const ops = await _loadPending(); if (!ops.length) return;
+    const doneIds=new Set();
+    for (const op of ops){ try{ await _executeSyncOp(op); doneIds.add(op.id); } catch(e){ if (!_isTransientSyncError(e)) doneIds.add(op.id); /* خطأ دائم: أسقطها حتى لا تتكرر إلى ما لا نهاية */ } }
+    if (doneIds.size) await KeyedLock.run(_pendingKey(), async ()=>{ const cur=await _loadPending(); await _savePending(cur.filter(o=>!doneIds.has(o.id))); });
+  } finally { _syncing=false; }
+}
+
+// ---------------------------------------------------------------------------
+// 7) نماذج البيانات (مطابقة لنفس الأصناف في الموقع الرئيسي: Subscriber,
+//    SubscriberEvent, AmpLineType) — بنفس أسماء الحقول وصيغة JSON المحلية.
+// ---------------------------------------------------------------------------
+const AmpLineType = Object.freeze({ normal:'normal', golden:'golden' });
+const AmpLineTypeX = { label(t){ return t===AmpLineType.golden?'خط ذهبي':'عادي'; }, fromName(n){ return n==='golden'?AmpLineType.golden:AmpLineType.normal; } };
+const SubscriberEventType = Object.freeze({ paymentFull:'paymentFull', paymentPartial:'paymentPartial', paymentUndo:'paymentUndo', edited:'edited', discount:'discount' });
+class SubscriberEvent {
+  constructor({ id, type, description, date, month=null, amount=null, kind=null, reversedBy=null }){ this.id=id; this.type=type; this.description=description; this.date=date instanceof Date?date:new Date(date); this.month=month; this.amount=amount; this.kind=kind; this.reversedBy=reversedBy; }
+  get isActiveCash(){ return (this.type===SubscriberEventType.paymentFull||this.type===SubscriberEventType.paymentPartial) && (this.amount??0)>0 && this.reversedBy==null; }
+  static fromJson(j){ return new SubscriberEvent({ id:j.id??newLocalId(), type:Object.values(SubscriberEventType).includes(j.type)?j.type:SubscriberEventType.edited, description:j.description??'', date:j.date?new Date(j.date):new Date(), month:j.month??null, amount:j.amount??null, kind:j.kind??null, reversedBy:j.reversedBy??null }); }
+  toJson(){ return { id:this.id, type:this.type, description:this.description, date:this.date.toISOString(), month:this.month, amount:this.amount, kind:this.kind, reversedBy:this.reversedBy }; }
+}
+class Subscriber {
+  constructor({ id, name, amps, phone, location=null, fuseNumber=null, boardNumber=null, previousDebt=0, previousDebtPaid=0, previousDebtNote=null, paidMonths=null, createdAt=null, partialPayments=null, history=null, lineType=AmpLineType.normal, ampsSnapshots=null, discounts=null, priceSnapshots=null, billingDay=1, frozen=false, freeAmps=0 }){
+    this.id=id; this.name=name; this.amps=amps; this.phone=phone??''; this.location=location;
+    this.fuseNumber=normalizeOptional(fuseNumber); this.boardNumber=normalizeOptional(boardNumber);
+    this.freeAmps=(freeAmps==null||freeAmps<0)?0:freeAmps; this.frozen=frozen??false;
+    this.previousDebt=(previousDebt==null||previousDebt<0)?0:previousDebt;
+    this.previousDebtPaid=(previousDebtPaid==null||previousDebtPaid<0)?0:previousDebtPaid;
+    this.previousDebtNote=previousDebtNote??null;
+    this.paidMonths=new Set(paidMonths??[]);
+    this.createdAt=createdAt?(createdAt instanceof Date?createdAt:new Date(createdAt)):new Date();
+    this.partialPayments=new Map(Object.entries(partialPayments??{}));
+    this.history=[...(history??[])];
+    this.lineType=lineType;
+    this.ampsSnapshots=new Map(Object.entries(ampsSnapshots??{}));
+    this.discounts=new Map(Object.entries(discounts??{}));
+    this.priceSnapshots=new Map(Object.entries(priceSnapshots??{}));
+    this.billingDay=(billingDay==null||billingDay<1||billingDay>28)?1:billingDay;
+  }
+  get previousDebtRemaining(){ const r=this.previousDebt-this.previousDebtPaid; return r<0?0:r; }
+  get hasPreviousDebt(){ return this.previousDebtRemaining>0.01; }
+  payableAmpsFor(month){ const v=this.ampsFor(month)-this.freeAmps; return v<0?0:v; }
+  partialPaidFor(month){ return this.partialPayments.get(Subscriber.monthKey(month))??0; }
+  discountFor(month){ return this.discounts.get(Subscriber.monthKey(month))??0; }
+  ampsFor(month){ return this.ampsSnapshots.get(Subscriber.monthKey(month))??this.amps; }
+  resolvedPriceFor(month, livePrice){ return this.priceSnapshots.get(Subscriber.monthKey(month))??livePrice; }
+  static monthKey(m){ const d=m instanceof Date?m:new Date(m); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+  isPaidFor(month){ return this.paidMonths.has(Subscriber.monthKey(month)); }
+  billingMonthFor(reference){ if (this.billingDay<=1) return new Date(reference.getFullYear(), reference.getMonth(), 1); if (reference.getDate()>=this.billingDay) return new Date(reference.getFullYear(), reference.getMonth(), 1); return new Date(reference.getFullYear(), reference.getMonth()-1, 1); }
+  static _readDoubleMap(raw){ const out={}; if (raw && typeof raw==='object' && !Array.isArray(raw)){ for (const [k,v] of Object.entries(raw)) if (typeof v==='number') out[k]=v; } return out; }
+  static fromLocalJson(j){
+    let paid; if (Array.isArray(j.paidMonths)) paid=new Set(j.paidMonths.map(String)); else { paid=new Set(); if (j.isPaid===true) paid.add(Subscriber.monthKey(new Date())); }
+    const history=[]; if (Array.isArray(j.history)) for (const e of j.history) history.push(SubscriberEvent.fromJson(e));
+    return new Subscriber({ id:j.id, name:j.name, amps:j.amps, phone:j.phone??'', location:j.location??null, paidMonths:paid, createdAt:j.createdAt?new Date(j.createdAt):new Date(), partialPayments:Subscriber._readDoubleMap(j.partialPayments), history, lineType:AmpLineTypeX.fromName(j.lineType), ampsSnapshots:Subscriber._readDoubleMap(j.ampsSnapshots), discounts:Subscriber._readDoubleMap(j.discounts), priceSnapshots:Subscriber._readDoubleMap(j.priceSnapshots), billingDay:j.billingDay??1, fuseNumber:normalizeOptional(j.fuseNumber), boardNumber:normalizeOptional(j.boardNumber), previousDebt:j.previousDebt??0, previousDebtPaid:j.previousDebtPaid??0, previousDebtNote:normalizeOptional(j.previousDebtNote), frozen:j.frozen===true, freeAmps:j.freeAmps??0 });
+  }
+  toLocalJson(){ return { id:this.id, name:this.name, amps:this.amps, phone:this.phone, location:this.location, fuseNumber:this.fuseNumber, boardNumber:this.boardNumber, paidMonths:[...this.paidMonths], createdAt:this.createdAt.toISOString(), partialPayments:Object.fromEntries(this.partialPayments), history:this.history.map(e=>e.toJson()), lineType:this.lineType, ampsSnapshots:Object.fromEntries(this.ampsSnapshots), discounts:Object.fromEntries(this.discounts), priceSnapshots:Object.fromEntries(this.priceSnapshots), billingDay:this.billingDay, previousDebt:this.previousDebt, previousDebtPaid:this.previousDebtPaid, previousDebtNote:this.previousDebtNote, frozen:this.frozen, freeAmps:this.freeAmps }; }
+}
+
+// ---------------------------------------------------------------------------
+// 8) المستودعات المحلية (نفس مفاتيح التخزين وصيغة المزامنة في الموقع
+//    الرئيسي بالضبط: SubscriberRepo / AmpPriceRepo / ExpenseRepo / سجل
+//    النشاط) — حتى تنعكس أي عملية صوتية فوراً داخل الموقع الرئيسي.
+// ---------------------------------------------------------------------------
+function _subLocalKey(){ return `local_subscribers_v2_${currentUid()??'anon'}`; }
+async function _subReadLocal(){ const raw=await Prefs.getString(_subLocalKey()); if (!raw) return []; try{ return JSON.parse(raw).map(j=>Subscriber.fromLocalJson(j)); }catch{ return []; } }
+async function _subSaveLocal(list){ await Prefs.setString(_subLocalKey(), JSON.stringify(list.map(s=>s.toLocalJson()))); }
+function _subSyncPayload(s, userId){ return { id:s.id, user_id:userId, name:s.name, amps:s.amps, phone:s.phone, location:s.location, line_type:s.lineType, billing_day:s.billingDay, fuse_number:s.fuseNumber, board_number:s.boardNumber, partial_payments:Object.fromEntries(s.partialPayments), discounts:Object.fromEntries(s.discounts), amps_snapshots:Object.fromEntries(s.ampsSnapshots), price_snapshots:Object.fromEntries(s.priceSnapshots), paid_months:[...s.paidMonths], previous_debt:s.previousDebt, previous_debt_paid:s.previousDebtPaid, previous_debt_note:s.previousDebtNote, frozen:s.frozen, free_amps:s.freeAmps, created_at:s.createdAt.toISOString(), history:s.history.map(e=>e.toJson()) }; }
+async function _subPushFullSync(s){ if (!await subStatusIsActive()) return; const uid=currentUid(); if (!uid) return; await enqueueSync('subscribers', 'upsert', _subSyncPayload(s, uid)); }
+function _requirePositivePrice(price){ if (price==null || price<=0) throw new Error('لم يُحدَّد سعر الأمبير لهذا الشهر بعد. حدِّده أولاً من الشاشة الرئيسية (✏️) ثم أعد المحاولة.'); }
+
+const SubscriberRepo = {
+  async getAll(){ return _subReadLocal(); },
+  async add(s){
+    DevicePermissions.require(Perm.addSubscriber);
+    await KeyedLock.run(_subLocalKey(), async ()=>{ const list=await _subReadLocal(); s.createdAt=new Date(); list.push(s); await _subSaveLocal(list); });
+    await _subPushFullSync(s);
+  },
+  async delete(id){
+    DevicePermissions.require(Perm.deleteSubscriber);
+    await KeyedLock.run(_subLocalKey(), async ()=>{ const list=await _subReadLocal(); await _subSaveLocal(list.filter(x=>x.id!==id)); });
+    if (await subStatusIsActive()){ const uid=currentUid(); if (uid) await enqueueSync('subscribers','delete',{ match:{ id, user_id:uid } }); }
+  },
+  async recordPayment(id, { month, amount, dueAmount, price=null }){
+    DevicePermissions.require(Perm.recordPayments);
+    if (amount<=0) throw new Error('أدخل مبلغاً أكبر من صفر.');
+    _requirePositivePrice(price);
+    const frozenPrice=price??0; const key=Subscriber.monthKey(month);
+    let updated=null, isFull=false, name='', eventId='';
+    await KeyedLock.run(_subLocalKey(), async ()=>{
+      const list=await _subReadLocal(); const idx=list.findIndex(x=>x.id===id); if (idx===-1) return;
+      const s=list[idx];
+      if (s.isPaidFor(month)) throw new Error('هذا الشهر مسدَّد بالكامل — لا يمكن تسجيل دفعة إضافية عليه.');
+      const alreadyPaid=s.partialPaidFor(month);
+      const effPrice=s.priceSnapshots.get(key)??frozenPrice;
+      const dueAmt=Math.max(0, s.payableAmpsFor(month)*effPrice - s.discountFor(month));
+      const remainingBefore=dueAmt-alreadyPaid;
+      if (amount>remainingBefore+0.01) throw new Error(`المبلغ أكبر من المتبقي (${formatMoney(Math.max(0,remainingBefore))} د.ع).`);
+      if (!s.ampsSnapshots.has(key)) s.ampsSnapshots.set(key, s.amps);
+      if (!s.priceSnapshots.has(key)) s.priceSnapshots.set(key, frozenPrice);
+      const newTotal=alreadyPaid+amount; name=s.name; isFull=dueAmt<=0||newTotal>=dueAmt-0.01;
+      if (isFull){ s.paidMonths.add(key); s.partialPayments.delete(key); } else s.partialPayments.set(key, newTotal);
+      eventId=newLocalId();
+      s.history.unshift(new SubscriberEvent({ id:eventId, type:isFull?SubscriberEventType.paymentFull:SubscriberEventType.paymentPartial, description: isFull?`تسديد كامل لشهر ${key} — ${formatMoney(amount)} د.ع`:`تسديد جزئي لشهر ${key} — ${formatMoney(amount)} د.ع (الإجمالي المدفوع: ${formatMoney(newTotal)} من ${formatMoney(dueAmt)} د.ع)`, date:new Date(), month:key, amount }));
+      await _subSaveLocal(list); updated=s;
+    });
+    if (!updated) return;
+    await _subPushFullSync(updated);
+    await ActivityLogRepo.add(new ActivityEntry({ id:newLocalId(), type:ActivityType.subscriberPaid, title: isFull?`${name} — سدد ${formatMoney(amount)} د.ع (${key})`:`${name} — دفعة جزئية ${formatMoney(amount)} د.ع (${key})`, subtitle:formatTimeAr(new Date()), time:new Date(), undoData:{ subscriberId:id, previousState:false, previousPaid:false, previousPartialAmount: updated.partialPaidFor(month)>0 && !isFull ? updated.partialPaidFor(month)-amount : 0, month:key, eventId } }));
+  },
+  async update(id, { name=null, amps=null, phone=null, location=undefined, lineType=null, fuseNumber=null, boardNumber=null }){
+    DevicePermissions.require(Perm.editSubscriber);
+    let updated=null;
+    await KeyedLock.run(_subLocalKey(), async ()=>{
+      const list=await _subReadLocal(); const idx=list.findIndex(x=>x.id===id); if (idx===-1) return;
+      const s=list[idx]; const changes=[];
+      if (name!=null && name.trim()!=='' && name!==s.name){ changes.push(`الاسم: "${s.name}" ← "${name}"`); s.name=name; }
+      if (amps!=null && amps>0 && amps!==s.amps){ changes.push(`الأمبيرات: ${s.amps.toFixed(0)} ← ${amps.toFixed(0)}`); s.amps=amps; }
+      if (phone!=null && phone.trim()!=='' && phone!==s.phone){ changes.push(`الهاتف: ${s.phone} ← ${phone}`); s.phone=phone; }
+      if (location!==undefined){ const nl=(location==null||String(location).trim()==='')?null:String(location).trim(); if (nl!==s.location){ changes.push(`الموقع: ${s.location??'-'} ← ${nl??'-'}`); s.location=nl; } }
+      if (lineType!=null && lineType!==s.lineType){ changes.push(`نوع الخط: ${AmpLineTypeX.label(s.lineType)} ← ${AmpLineTypeX.label(lineType)}`); s.lineType=lineType; }
+      if (fuseNumber!=null){ const v=normalizeOptional(fuseNumber); if (v!==s.fuseNumber){ changes.push(`رقم الجوزة: ${s.fuseNumber??'-'} ← ${v??'-'}`); s.fuseNumber=v; } }
+      if (boardNumber!=null){ const v=normalizeOptional(boardNumber); if (v!==s.boardNumber){ changes.push(`رقم البورد: ${s.boardNumber??'-'} ← ${v??'-'}`); s.boardNumber=v; } }
+      if (changes.length===0) return;
+      s.history.unshift(new SubscriberEvent({ id:newLocalId(), type:SubscriberEventType.edited, description:`تعديل بيانات المشترك: ${changes.join('، ')}`, date:new Date() }));
+      await _subSaveLocal(list); updated=s;
+    });
+    if (updated) await _subPushFullSync(updated);
+    return updated;
+  },
+};
+
+function _ampPrefix(){ return `amp_price_v2_${currentUid()??'anon'}_`; }
+function _ampKeyFor(month, type=AmpLineType.normal){ const base=`${_ampPrefix()}${month.getFullYear()}_${String(month.getMonth()+1).padStart(2,'0')}`; return type===AmpLineType.golden?`${base}_golden`:base; }
+async function _ampMap(){
+  const prefix=_ampPrefix(); const result={}; const keys=await Prefs.getKeys();
+  for (const key of keys){
+    if (!key.startsWith(prefix)) continue;
+    const suffix=key.substring(prefix.length); const parts=suffix.split('_');
+    if (parts.length!==2 && parts.length!==3) continue;
+    const isGolden=parts.length===3 && parts[2]==='golden'; if (parts.length===3 && !isGolden) continue;
+    const raw=await Prefs.getString(key); if (!raw) continue;
+    try{ const v=JSON.parse(raw); if (typeof v==='number'){ result[`${parts[0]}-${parts[1]}${isGolden?'-golden':''}`]=v; } } catch {}
+  }
+  return result;
+}
+async function _ampNearestPriorPrice(month, type){
+  const all=await _ampMap(); const target=new Date(month.getFullYear(), month.getMonth(), 1);
+  let bestMonth=null, bestPrice=null;
+  for (const [k,v] of Object.entries(all)){
+    const isGolden=k.endsWith('-golden'); if ((type===AmpLineType.golden)!==isGolden) continue;
+    const datePart=isGolden?k.substring(0,k.length-'-golden'.length):k; const parts=datePart.split('-'); if (parts.length!==2) continue;
+    const y=parseInt(parts[0],10), m=parseInt(parts[1],10); if (isNaN(y)||isNaN(m)) continue;
+    const em=new Date(y,m-1,1); if (em>=target) continue;
+    if (!bestMonth || em>bestMonth){ bestMonth=em; bestPrice=v; }
+  }
+  return bestPrice;
+}
+const AmpPriceRepo = {
+  async getFor(month, type){ const map=await _ampMap(); const label=`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}${type===AmpLineType.golden?'-golden':''}`; const v=map[label]; if (typeof v==='number') return v; return (await _ampNearestPriorPrice(month,type))??0; },
+  async getAll(){ return _ampMap(); },
+  async setFor(month, type, price){
+    DevicePermissions.require(Perm.editPrices);
+    await Prefs.setString(_ampKeyFor(month,type), JSON.stringify(price));
+    if (await subStatusIsActive()){ const uid=currentUid(); if (uid){ const all=await this.getAll(); await enqueueSync('profiles','upsert',{ id:uid, amp_prices:all }); } }
+  },
+};
+
+function _expenseCacheKey(month){ return `local_expenses_v1_${currentUid()??'anon'}_${month.getFullYear()}_${month.getMonth()+1}`; }
+const ExpenseCategory = Object.freeze({ fuel:'fuel', oil:'oil', repairs:'repairs', salaries:'salaries' });
+const ExpenseCategoryX = { label(c){ return c===ExpenseCategory.fuel?'كاز':c===ExpenseCategory.oil?'دهن':c===ExpenseCategory.repairs?'إصلاحات':'رواتب'; } };
+const ExpenseRepo = {
+  async _readLocal(month){ const list=await (async()=>{ const raw=await Prefs.getString(_expenseCacheKey(month)); if (!raw) return []; try{ const j=JSON.parse(raw); return Array.isArray(j)?j:[]; }catch{ return []; } })(); return list; },
+  async add(category, amount, month, { quantity=null, note=null }={}){
+    DevicePermissions.require(Perm.manageExpenses);
+    const uid=currentUid(); if (!uid) throw new Error('يجب تسجيل الدخول');
+    const id=newLocalId(); const monthStr=`${month.getFullYear()}-${String(month.getMonth()+1).padStart(2,'0')}-01`;
+    await KeyedLock.run(_expenseCacheKey(month), async ()=>{ const list=await this._readLocal(month); list.push({ id, category, amount, ...(quantity!=null?{quantity}:{}), ...(note&&note.trim()?{note:note.trim()}:{}), time:new Date().toISOString() }); await Prefs.setString(_expenseCacheKey(month), JSON.stringify(list)); });
+    const details=[`مصروف ${ExpenseCategoryX.label(category)}`];
+    if (quantity!=null) details.push(`(${quantity.toFixed(0)})`);
+    if (note && note.trim()) details.push(`— ${note.trim()}`);
+    details.push(`— ${formatMoney(amount)} د.ع`);
+    await ActivityLogRepo.add(new ActivityEntry({ id:newLocalId(), type:ActivityType.expenseAdded, title:details.join(' '), subtitle:formatTimeAr(new Date()), time:new Date(), undoData:{ expenseId:id, month:monthStr } }));
+    if (await subStatusIsActive()){ await enqueueSync('expenses','upsert',{ id, user_id:uid, category, amount, quantity:quantity??null, note:(note&&note.trim())?note.trim():null, expense_month:monthStr }); }
+  },
+};
+
+const ActivityType = Object.freeze({ subscriberPaid:'subscriberPaid', subscriberUnpaid:'subscriberUnpaid', expenseAdded:'expenseAdded' });
+const DEVICE_KEY='device_display_name_v1';
+async function deviceDisplayName(){ let name=await Prefs.getString(DEVICE_KEY); if (!name || !name.trim()){ const suffix=100+(Date.now()%900); name=`جهاز ${suffix}`; await Prefs.setString(DEVICE_KEY,name); } return name; }
+function formatTimeAr(d){ const dt=d instanceof Date?d:new Date(d); const p=n=>String(n).padStart(2,'0'); return `${p(dt.getHours())}:${p(dt.getMinutes())} — ${p(dt.getDate())}/${p(dt.getMonth()+1)}/${dt.getFullYear()}`; }
+class ActivityEntry {
+  constructor({ id, type, title, subtitle, time, undoData, undone=false, deviceName=null }){ this.id=id; this.type=type; this.title=title; this.subtitle=subtitle; this.time=time instanceof Date?time:new Date(time); this.undoData=undoData??{}; this.undone=undone; this.deviceName=deviceName; }
+  toJson(){ return { id:this.id, type:this.type, title:this.title, subtitle:this.subtitle, time:this.time.toISOString(), undoData:this.undoData, undone:this.undone, deviceName:this.deviceName }; }
+}
+function _alKey(){ return `activity_log_v1_${currentUid()??'anon'}`; }
+const MAX_ACTIVITY_ENTRIES=100;
+const ActivityLogRepo = {
+  async getAll(){ const raw=await Prefs.getString(_alKey()); if (!raw) return []; try{ return JSON.parse(raw); }catch{ return []; } },
+  async add(entry){
+    const deviceName=await deviceDisplayName();
+    const stamped={ ...entry.toJson(), deviceName };
+    await KeyedLock.run(_alKey(), async ()=>{ const list=await this.getAll(); list.unshift(stamped); await Prefs.setString(_alKey(), JSON.stringify(list.slice(0, MAX_ACTIVITY_ENTRIES))); });
+    const uid=currentUid();
+    if (uid && await subStatusIsActive()){ await enqueueSync('activity_log','upsert',{ id:stamped.id, user_id:uid, type:stamped.type, title:stamped.title, subtitle:stamped.subtitle, occurred_at:stamped.time, undo_data:stamped.undoData, undone:stamped.undone, device_name:stamped.deviceName }); }
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 9) تطبيع ومطابقة الأسماء العربية (مطابق حرفياً لِـ voice_command_handler.dart)
+// ---------------------------------------------------------------------------
+function normalizeArabicName(input){
+  let s=String(input??'').trim();
+  s=s.replace(/[\u064B-\u0652\u0670\u0640]/g,'');
+  s=s.replace(/[أإآٱ]/g,'ا');
+  s=s.replace(/ى/g,'ي'); s=s.replace(/ة/g,'ه'); s=s.replace(/\s+/g,' ').trim();
+  return s.toLowerCase();
+}
+function _levenshtein(a,b){
+  if (a===b) return 0; if (a.length===0) return b.length; if (b.length===0) return a.length;
+  let prev=Array.from({length:b.length+1},(_,i)=>i); let curr=new Array(b.length+1).fill(0);
+  for (let i=1;i<=a.length;i++){ curr[0]=i; for (let j=1;j<=b.length;j++){ const cost=a[i-1]===b[j-1]?0:1; curr[j]=Math.min(Math.min(curr[j-1]+1, prev[j]+1), prev[j-1]+cost); } const tmp=prev; prev=curr; curr=tmp; }
+  return prev[b.length];
+}
+function nameSimilarity(a,b){
+  const na=normalizeArabicName(a), nb=normalizeArabicName(b);
+  if (!na || !nb) return 0; if (na===nb) return 1;
+  const dist=_levenshtein(na,nb); const maxLen=Math.max(na.length, nb.length);
+  const base=1-(dist/maxLen); const boost=(na.includes(nb)||nb.includes(na))?0.12:0;
+  return Math.min(1, base+boost);
+}
+const MATCH_THRESHOLD=0.72, UNIQUE_GAP=0.12;
+function matchSubscriberByName(spoken, all){
+  if (!spoken || !spoken.trim() || all.length===0) return { kind:'none' };
+  const scored = all.map(s=>({ s, v:nameSimilarity(spoken, s.name) })).filter(e=>e.v>=MATCH_THRESHOLD).sort((a,b)=>b.v-a.v);
+  if (scored.length===0) return { kind:'none' };
+  if (scored.length===1) return { kind:'unique', subscriber:scored[0].s };
+  if (scored[0].v - scored[1].v >= UNIQUE_GAP) return { kind:'unique', subscriber:scored[0].s };
+  return { kind:'ambiguous', candidates:scored.slice(0,4).map(e=>e.s) };
+}
+
+// ---------------------------------------------------------------------------
+// 10) طبقة الاتصال بالذكاء الاصطناعي (مطابقة لِـ groq_transcription_service.dart
+//     + gemini_intent_service.dart) — نفس الدالة Edge "voice-ai"، نفس إعادة
+//     المحاولة على 429/503/504، ونفس رسائل الخطأ بالعربي.
+// ---------------------------------------------------------------------------
+const StageLabel = { transcription:'تحويل الصوت إلى نص', intent:'فهم الأمر' };
+class VoiceAiException extends Error {
+  constructor(stage, type, message, { httpStatus=null, rawBody=null }={}){ super(message); this.stage=stage; this.type=type; this.httpStatus=httpStatus; this.rawBody=rawBody; }
+}
+function _errorTypeFromBody(data){ return (data && typeof data.error_type==='string') ? data.error_type : 'unknown'; }
+function _toVoiceException(stage, status, type, data){
+  const message=(data && typeof data.message==='string') ? data.message : (stage==='transcription' ? 'خطأ غير متوقع من خدمة التحويل الصوتي.' : 'خطأ غير متوقع من خدمة فهم الأمر.');
+  return new VoiceAiException(stage, type, message, { httpStatus:status, rawBody: data? JSON.stringify(data) : null });
+}
+async function _extractFunctionsError(err){
+  let status = err?.context?.status ?? err?.status ?? null; let data=null;
+  try { if (err?.context && typeof err.context.clone==='function'){ data = await err.context.clone().json(); } } catch {}
+  if (data==null){ try { if (err?.context && typeof err.context.clone==='function'){ const t=await err.context.clone().text(); try{ data=JSON.parse(t); }catch{ data={ message:t }; } } } catch {} }
+  return { status, data };
+}
+function withTimeout(promise, ms){
+  let timer;
+  const timeout = new Promise((_, reject)=>{ timer=setTimeout(()=>reject(new Error('__VOICE_TIMEOUT__')), ms); });
+  return Promise.race([promise, timeout]).finally(()=>clearTimeout(timer));
+}
+async function _invokeVoiceFn(body, { stage, timeoutMs }){
+  let lastError=null;
+  for (let attempt=0; attempt<=MAX_RETRIES; attempt++){
+    try {
+      const result = await withTimeout(sbReal.functions.invoke(VOICE_FN, { body }), timeoutMs);
+      if (!result.error) return result.data;
+      const { status, data } = await _extractFunctionsError(result.error);
+      const errType = _errorTypeFromBody(data);
+      if (status===429 || status===503 || status===504){
+        lastError = _toVoiceException(stage, status, errType, data);
+        if (attempt<MAX_RETRIES){ await sleep(2000*(attempt+1)); continue; }
+        throw lastError;
+      }
+      throw _toVoiceException(stage, status, errType, data);
+    } catch(e){
+      if (e instanceof VoiceAiException) throw e;
+      if (e && e.message==='__VOICE_TIMEOUT__'){
+        lastError = new VoiceAiException(stage, 'timeout', `انتهت مهلة الاتصال (${Math.round(timeoutMs/1000)} ثانية). تحقق من الإنترنت.`);
+        if (attempt>=MAX_RETRIES) throw lastError; continue;
+      }
+      const msg = String(e?.message||e||'');
+      if (!navigator.onLine || /network|fetch|failed to fetch/i.test(msg)){
+        throw new VoiceAiException(stage, 'noInternet', stage==='transcription' ? 'لا يوجد اتصال بالإنترنت أثناء تحويل الصوت إلى نص. تفقّد الشبكة.' : 'لا يوجد اتصال بالإنترنت أثناء فهم الأمر. تفقّد الشبكة.', { rawBody:msg });
+      }
+      lastError = new VoiceAiException(stage, 'unauthorized', stage==='transcription' ? 'فشل استدعاء خدمة التحويل الصوتي. تأكد أنك مسجّل دخول.' : 'فشل استدعاء خدمة فهم الأمر. تأكد أنك مسجّل دخول.', { rawBody:msg });
+      if (attempt>=MAX_RETRIES) throw lastError;
+    }
+  }
+  throw lastError || new VoiceAiException(stage, 'unknown', stage==='transcription' ? 'فشل غير معروف أثناء تحويل الصوت إلى نص.' : 'فشل غير معروف أثناء فهم الأمر.');
+}
+async function blobToBase64(blob){
+  const buf = await blob.arrayBuffer(); const bytes=new Uint8Array(buf);
+  let bin=''; const chunk=8192; for (let i=0;i<bytes.length;i+=chunk) bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
+  return btoa(bin);
+}
+async function transcribeAudio(blob, mimeType){
+  if (blob.size < MIN_AUDIO_BYTES) throw new VoiceAiException('transcription','audioTooShort', `التسجيل قصير جداً (${blob.size} بايت). تكلم ثانية كاملة على الأقل.`);
+  if (blob.size > MAX_AUDIO_BYTES) throw new VoiceAiException('transcription','audioTooLong', `التسجيل كبير جداً (${(blob.size/1024/1024).toFixed(1)} م.ب). تكلم أقل من 30 ثانية.`);
+  const b64 = await blobToBase64(blob);
+  const data = await _invokeVoiceFn({ op:'transcribe', audio_base64:b64, content_type: mimeType || 'audio/webm' }, { stage:'transcription', timeoutMs:TRANSCRIBE_TIMEOUT_MS });
+  if (!data || typeof data!=='object' || typeof data.text!=='string') throw new VoiceAiException('transcription','invalidJson','رد خدمة التحويل الصوتي غير صالح.');
+  const text=data.text.trim();
+  if (!text) throw new VoiceAiException('transcription','emptyTranscription','لم أسمع أي كلام واضح في التسجيل. تأكد من قربك من المايك وتحدّث بصوت أعلى.');
+  return text;
+}
+async function parseIntent(text, subscriberNames){
+  const data = await _invokeVoiceFn({ op:'intent', text, subscriber_names:subscriberNames }, { stage:'intent', timeoutMs:INTENT_TIMEOUT_MS });
+  if (!data || typeof data!=='object') throw new VoiceAiException('intent','invalidJson','رد خدمة فهم الأمر غير صالح.');
+  if (Object.prototype.hasOwnProperty.call(data,'error_type')) throw _toVoiceException('intent', null, _errorTypeFromBody(data), data);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// 11) تحليل حمولة كل Intent (مطابق حرفياً لِـ voice_command_handler.dart)
+// ---------------------------------------------------------------------------
+function _toNum(v){ if (v==null) return null; if (typeof v==='number') return v; if (typeof v==='string') return parseAmount(v); return null; }
+function _parseMonth(v){
+  if (typeof v==='string'){ const m=/^(\d{4})-(\d{1,2})$/.exec(v.trim()); if (m){ const y=parseInt(m[1],10), mo=parseInt(m[2],10); if (y && mo>=1 && mo<=12) return new Date(y, mo-1, 1); } }
+  const now=new Date(); return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+function parseAddSubscriberData(d){
+  const name=(d.name??'').trim ? (d.name??'').trim() : d.name; const amps=_toNum(d.amps);
+  if (!name || !String(name).trim() || amps==null || amps<=0) return null;
+  return { name:String(name).trim(), amps, phone:(d.phone??'').toString().trim(), lineType:AmpLineTypeX.fromName(d.line_type), boardNumber:normalizeOptional(d.board_number), fuseNumber:normalizeOptional(d.fuse_number), location:normalizeOptional(d.location) };
+}
+function parseRecordPaymentData(d){
+  const name=(d.subscriber_name??'').toString().trim(); const amount=_toNum(d.amount);
+  if (!name || amount==null || amount<=0) return null;
+  return { subscriberName:name, amount, month:_parseMonth(d.month) };
+}
+function parseUpdateAmpPriceData(d){
+  const price=_toNum(d.price_per_amp); if (price==null || price<=0) return null;
+  return { price, lineType:AmpLineTypeX.fromName(d.line_type), month:_parseMonth(d.month) };
+}
+function _parseCategory(v){
+  const s=(v??'').toString().trim().toLowerCase(); if (!s) return null;
+  const map={ fuel:ExpenseCategory.fuel,'كاز':ExpenseCategory.fuel,'بنزين':ExpenseCategory.fuel,'وقود':ExpenseCategory.fuel,'نفط':ExpenseCategory.fuel, oil:ExpenseCategory.oil,'دهن':ExpenseCategory.oil,'زيت':ExpenseCategory.oil, repairs:ExpenseCategory.repairs,'إصلاح':ExpenseCategory.repairs,'اصلاح':ExpenseCategory.repairs,'إصلاحات':ExpenseCategory.repairs,'اصلاحات':ExpenseCategory.repairs,'صيانة':ExpenseCategory.repairs, salaries:ExpenseCategory.salaries,'راتب':ExpenseCategory.salaries,'رواتب':ExpenseCategory.salaries,'اجور':ExpenseCategory.salaries,'أجور':ExpenseCategory.salaries };
+  return map[s] ?? null;
+}
+function parseAddExpenseData(d){
+  const category=_parseCategory(d.category); const amount=_toNum(d.amount);
+  if (!category || amount==null || amount<=0) return null;
+  return { category, amount, quantity:_toNum(d.quantity), note:normalizeOptional(d.note) };
+}
+
+// ---------------------------------------------------------------------------
+// 12) المعالج الرئيسي (مطابق حرفياً لِـ VoiceCommandHandler بـ
+//     voice_command_handler.dart) — يبني نتيجة: replay / ambiguous / confirm
+// ---------------------------------------------------------------------------
+async function handleVoiceIntent(raw, subscribers){
+  try {
+    const intent = raw.intent; const confidence = Number(raw.confidence ?? 0);
+    const dataRaw = raw.data;
+    if (!intent || intent==='unknown' || confidence < MIN_CONFIDENCE || !dataRaw || typeof dataRaw!=='object') return { kind:'replay', message:REPLAY_MESSAGE };
+    const data = { ...dataRaw };
+    const spoken = (raw.spoken_confirmation ?? '').toString().trim();
+    switch (intent){
+      case 'add_subscriber': return _h_addSubscriber(data, spoken);
+      case 'record_payment': return await _h_recordPayment(data, spoken, subscribers);
+      case 'update_amp_price': return _h_updateAmpPrice(data, spoken);
+      case 'add_expense': return _h_addExpense(data, spoken);
+      case 'update_subscriber': return await _h_updateSubscriber(data, spoken, subscribers);
+      default: return { kind:'replay', message:REPLAY_MESSAGE };
+    }
+  } catch { return { kind:'replay', message:REPLAY_MESSAGE }; }
+}
+function _h_addSubscriber(raw, spoken){
+  const d = parseAddSubscriberData(raw);
+  if (!d) return { kind:'replay', message:'بيانات المشترك ناقصة أو غير صالحة، عيد المحاولة.' };
+  const summary = `إضافة مشترك جديد: ${d.name} — ${d.amps.toFixed(0)} أمبير` + (d.phone?` — ${d.phone}`:'') + (d.lineType===AmpLineType.golden?' (خط ذهبي)':'');
+  return { kind:'confirm', summary, spokenConfirmation: spoken||summary, execute: async ()=>{
+    const id=newLocalId();
+    await SubscriberRepo.add(new Subscriber({ id, name:d.name, amps:d.amps, phone:d.phone, lineType:d.lineType, boardNumber:d.boardNumber, fuseNumber:d.fuseNumber, location:d.location }));
+    return { message:`تمت إضافة ${d.name}.`, undo: ()=>SubscriberRepo.delete(id) };
+  }};
+}
+async function _h_recordPayment(raw, spoken, subs){
+  const d = parseRecordPaymentData(raw);
+  if (!d) return { kind:'replay', message:'بيانات الدفعة ناقصة أو غير صالحة، عيد المحاولة.' };
+  const match = matchSubscriberByName(d.subscriberName, subs);
+  if (match.kind==='none') return { kind:'replay', message:'ما لقيت مشتركاً بهذا الاسم.' };
+  if (match.kind==='ambiguous') return { kind:'ambiguous', spokenPrompt:`في أكثر من مشترك يشبه هذا الاسم: ${match.candidates.map(s=>s.name).join('، ')}. حدد بالضبط.`, candidates:match.candidates };
+  const s = match.subscriber;
+  const livePrice = await AmpPriceRepo.getFor(d.month, s.lineType);
+  const key = Subscriber.monthKey(d.month);
+  const effPrice = s.priceSnapshots.get(key) ?? livePrice;
+  const due = Math.max(0, s.payableAmpsFor(d.month)*effPrice - s.discountFor(d.month));
+  const summary = `تسجيل دفعة ${formatMoney(d.amount)} د.ع من ${s.name} لشهر ${key} (المستحق: ${formatMoney(due)} د.ع)`;
+  return { kind:'confirm', summary, spokenConfirmation: spoken||summary, execute: async ()=>{
+    await SubscriberRepo.recordPayment(s.id, { month:d.month, amount:d.amount, dueAmount:due, price:livePrice });
+    return { message:`تم تسجيل الدفعة لـ ${s.name}.`, undo:null };
+  }};
+}
+function _h_updateAmpPrice(raw, spoken){
+  const d = parseUpdateAmpPriceData(raw);
+  if (!d) return { kind:'replay', message:'سعر الأمبير غير واضح، عيد المحاولة.' };
+  if (d.price > MAX_AMP_PRICE) return { kind:'replay', message:`السعر أكبر من الحد الأقصى المسموح (${formatMoney(MAX_AMP_PRICE)} د.ع).` };
+  const lineLabel = d.lineType===AmpLineType.golden ? 'الذهبي' : 'العادي';
+  const summary = `تحديث سعر الأمبير ${lineLabel} لشهر ${Subscriber.monthKey(d.month)} إلى ${formatMoney(d.price)} د.ع`;
+  return { kind:'confirm', summary, spokenConfirmation: spoken||summary, execute: async ()=>{
+    const prevPrice = await AmpPriceRepo.getFor(d.month, d.lineType);
+    await AmpPriceRepo.setFor(d.month, d.lineType, d.price);
+    return { message:'تم تحديث السعر.', undo: ()=>AmpPriceRepo.setFor(d.month, d.lineType, prevPrice) };
+  }};
+}
+function _h_addExpense(raw, spoken){
+  const d = parseAddExpenseData(raw);
+  if (!d) return { kind:'replay', message:'بيانات المصروف ناقصة أو غير صالحة، عيد المحاولة.' };
+  const summary = `إضافة مصروف ${ExpenseCategoryX.label(d.category)}: ${formatMoney(d.amount)} د.ع` + (d.note?` — ${d.note}`:'');
+  return { kind:'confirm', summary, spokenConfirmation: spoken||summary, execute: async ()=>{
+    const month=new Date();
+    await ExpenseRepo.add(d.category, d.amount, month, { quantity:d.quantity, note:d.note });
+    return { message:'تمت إضافة المصروف.', undo:null };
+  }};
+}
+async function _h_updateSubscriber(raw, spoken, subs){
+  const name=(raw.subscriber_name??'').toString().trim();
+  if (!name) return { kind:'replay', message:'اسم المشترك غير واضح، عيد المحاولة.' };
+  const match = matchSubscriberByName(name, subs);
+  if (match.kind==='none') return { kind:'replay', message:'ما لقيت مشتركاً بهذا الاسم.' };
+  if (match.kind==='ambiguous') return { kind:'ambiguous', spokenPrompt:`في أكثر من مشترك يشبه هذا الاسم: ${match.candidates.map(s=>s.name).join('، ')}. حدد بالضبط.`, candidates:match.candidates };
+  const s = match.subscriber;
+  const newName=(raw.name??'').toString().trim()||null;
+  const newAmps=_toNum(raw.amps);
+  const newPhone = raw.phone!=null ? String(raw.phone) : null;
+  const newLocation = raw.location!=null ? String(raw.location) : null;
+  const newLineType = raw.line_type!=null ? AmpLineTypeX.fromName(raw.line_type) : null;
+  const newFuse = raw.fuse_number!=null ? String(raw.fuse_number) : null;
+  const newBoard = raw.board_number!=null ? String(raw.board_number) : null;
+  const changes=[];
+  if (newName) changes.push(`الاسم إلى ${newName}`);
+  if (newAmps!=null) changes.push(`الأمبير إلى ${newAmps.toFixed(0)}`);
+  if (newPhone!=null) changes.push(`الهاتف إلى ${newPhone}`);
+  if (newLocation!=null) changes.push(`الموقع إلى ${newLocation}`);
+  if (newLineType!=null) changes.push(`نوع الخط إلى ${newLineType===AmpLineType.golden?'ذهبي':'عادي'}`);
+  if (newFuse!=null) changes.push(`رقم الجوزة إلى ${newFuse}`);
+  if (newBoard!=null) changes.push(`رقم البورد إلى ${newBoard}`);
+  if (changes.length===0) return { kind:'replay', message:'ما وضحت أي تغيير على بيانات المشترك.' };
+  const summary = `تعديل بيانات ${s.name}: ${changes.join('، ')}`;
+  return { kind:'confirm', summary, spokenConfirmation: spoken||summary, execute: async ()=>{
+    const old = { name:s.name, amps:s.amps, phone:s.phone, location:s.location, lineType:s.lineType, fuseNumber:s.fuseNumber, boardNumber:s.boardNumber };
+    await SubscriberRepo.update(s.id, { name:newName, amps:newAmps, phone:newPhone, location:newLocation, lineType:newLineType, fuseNumber:newFuse, boardNumber:newBoard });
+    return { message:`تم تعديل بيانات ${s.name}.`, undo: ()=>SubscriberRepo.update(s.id, { name:old.name, amps:old.amps, phone:old.phone, location:old.location, lineType:old.lineType, fuseNumber:old.fuseNumber??'', boardNumber:old.boardNumber??'' }) };
+  }};
+}
+
+// ---------------------------------------------------------------------------
+// 13) واجهة الشاشة (مطابقة لِـ voice_screen.dart: نفس الحالات، نفس النصوص،
+//     نفس الأزرار، نفس تأثير النطق الصوتي)
+// ---------------------------------------------------------------------------
+const root = document.getElementById('app-root');
+let STATE='idle'; // idle | recording | transcribing | understanding | processing | ambiguous | confirming | result
+let mediaRecorder=null, mediaStream=null, recordedChunks=[], recorderMime='audio/webm';
+let recordTimer=null, elapsedSeconds=0;
+let statusText=null, transcript=null, candidates=[], lastRawJson=null, pendingOutcome=null, lastResult=null;
+let undoAvailable=false, undoExpiryTimer=null;
+
+function speak(text){
+  try{
+    if (!text || !text.trim() || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang='ar-IQ'; u.rate=0.92; u.pitch=1;
+    window.speechSynthesis.speak(u);
+  }catch{}
+}
+function showToast(msg, ok=true){
+  const el=document.createElement('div'); el.className='toast-float '+(ok?'ok':'err'); el.textContent=msg;
+  document.getElementById('overlay-root').appendChild(el); setTimeout(()=>el.remove(), 3300);
+}
+function goBack(){ if (window.history.length>1) window.history.back(); else window.location.href='index.html'; }
+
+async function startRecording(){
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  } catch (e){
+    statusText='لم يُسمح باستخدام المايك. فعّله من إعدادات المتصفح.'; STATE='result'; render(); speak(statusText); return;
+  }
+  const mimeCandidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
+  recorderMime = mimeCandidates.find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  recordedChunks=[];
+  mediaRecorder = recorderMime ? new MediaRecorder(mediaStream, { mimeType:recorderMime }) : new MediaRecorder(mediaStream);
+  mediaRecorder.ondataavailable = e=>{ if (e.data && e.data.size>0) recordedChunks.push(e.data); };
+  mediaRecorder.start();
+  STATE='recording'; elapsedSeconds=0; statusText=null; transcript=null; lastResult=null; undoAvailable=false;
+  if (undoExpiryTimer){ clearTimeout(undoExpiryTimer); undoExpiryTimer=null; }
+  render();
+  recordTimer = setInterval(()=>{ elapsedSeconds++; render(); if (elapsedSeconds>=MAX_RECORD_SECONDS) stopRecording(); }, 1000);
+}
+async function stopRecording(){
+  if (recordTimer){ clearInterval(recordTimer); recordTimer=null; }
+  if (STATE!=='recording') return;
+  const recorder = mediaRecorder;
+  const blob = await new Promise(resolve=>{
+    recorder.onstop = ()=>{ resolve(new Blob(recordedChunks, { type: recorderMime || 'audio/webm' })); };
+    recorder.stop();
+  });
+  if (mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; }
+  if (!blob || blob.size===0){ showReplay('ما قدرت أسجّل الصوت. عيد المحاولة.'); return; }
+  STATE='transcribing'; render();
+  await processAudio(blob, recorderMime);
+}
+async function processAudio(blob, mimeType){
+  try {
+    const subscribers = await SubscriberRepo.getAll();
+    const names = subscribers.map(s=>s.name);
+    const text = await transcribeAudio(blob, mimeType);
+    transcript = text; STATE='understanding'; render();
+    const intentJson = await parseIntent(text, names);
+    lastRawJson = intentJson;
+    const outcome = await handleVoiceIntent(intentJson, subscribers);
+    await applyOutcome(outcome);
+  } catch (e){
+    if (e instanceof VoiceAiException){ showReplay(`${StageLabel[e.stage]}: ${e.message}`); }
+    else { showReplay(e && e.message ? e.message : `خطأ غير متوقع: ${e}`); }
+  }
+}
+async function applyOutcome(outcome){
+  if (outcome.kind==='replay'){ showReplay(outcome.message); return; }
+  if (outcome.kind==='ambiguous'){ STATE='ambiguous'; candidates=outcome.candidates; statusText=outcome.spokenPrompt; render(); speak(outcome.spokenPrompt); return; }
+  if (outcome.kind==='confirm'){ STATE='confirming'; pendingOutcome=outcome; statusText=outcome.summary; render(); speak(outcome.spokenConfirmation||outcome.summary); }
+}
+function showReplay(message){ STATE='result'; statusText=message; render(); speak(message); }
+async function pickCandidate(s){
+  const raw = lastRawJson; if (!raw) return;
+  const data = { ...(raw.data||{}) };
+  if (Object.prototype.hasOwnProperty.call(data,'subscriber_name')) data.subscriber_name = s.name;
+  const rebuilt = { ...raw, data };
+  STATE='processing'; render();
+  const subscribers = await SubscriberRepo.getAll();
+  const outcome = await handleVoiceIntent(rebuilt, subscribers);
+  await applyOutcome(outcome);
+}
+async function confirmYes(){
+  const outcome = pendingOutcome; if (!outcome) return;
+  STATE='processing'; render();
+  try {
+    const result = await outcome.execute();
+    STATE='result'; statusText=result.message; lastResult=result; undoAvailable = typeof result.undo==='function'; render(); speak(result.message);
+    if (undoAvailable){ if (undoExpiryTimer) clearTimeout(undoExpiryTimer); undoExpiryTimer=setTimeout(()=>{ undoAvailable=false; render(); }, 20000); }
+  } catch (e){
+    const msg = e && e.message ? e.message : String(e);
+    STATE='result'; statusText=msg; render(); speak(msg);
+  }
+}
+async function confirmNo(){ STATE='idle'; pendingOutcome=null; statusText=null; render(); speak('تم الإلغاء.'); }
+async function undoLast(){
+  const undo = lastResult?.undo; if (!undo) return;
+  STATE='processing'; render();
+  try { await undo(); STATE='result'; statusText='تم التراجع عن العملية.'; undoAvailable=false; render(); speak('تم التراجع عن العملية.'); }
+  catch (e){ STATE='result'; statusText=`تعذّر التراجع: ${e && e.message ? e.message : e}`; render(); }
+}
+function resetToIdle(){ STATE='idle'; statusText=null; transcript=null; pendingOutcome=null; candidates=[]; render(); }
+
+function transcriptCaptionHtml(){
+  if (!transcript) return '';
+  return `<div class="voice-transcript">🎤 سمعت: "${_esc(transcript)}"</div>`;
+}
+function _esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function mainAreaHtml(){
+  switch (STATE){
+    case 'idle':
+      return `<div class="voice-center"><div class="voice-idle-text">اضغط على المايك وتكلم</div></div>`;
+    case 'recording':
+      return `<div class="voice-center"><i class="fa-solid fa-microphone voice-rec-icon"></i><div class="voice-rec-timer">${elapsedSeconds} / ${MAX_RECORD_SECONDS} ثانية</div><div class="voice-rec-hint">اضغط مرة أخرى للإيقاف</div></div>`;
+    case 'transcribing':
+      return `<div class="voice-center"><i class="fa-solid fa-spinner fa-spin voice-spinner"></i><div class="voice-stage-text">جارٍ تحويل الصوت إلى نص...</div></div>`;
+    case 'understanding':
+      return `<div class="voice-center"><i class="fa-solid fa-spinner fa-spin voice-spinner"></i><div class="voice-stage-text">جارٍ فهم الأمر...</div>${transcriptCaptionHtml()}</div>`;
+    case 'processing':
+      return `<div class="voice-center"><i class="fa-solid fa-spinner fa-spin voice-spinner"></i><div class="voice-stage-text">لحظات...</div></div>`;
+    case 'ambiguous':
+      return `<div class="voice-center"><i class="fa-solid fa-circle-question voice-status-icon" style="color:#EF6C00"></i><div class="voice-status-text">${_esc(statusText||'')}</div><div class="voice-candidates">${candidates.map((s,i)=>`<button class="btn btn-tonal" data-cand="${i}">${_esc(s.name)}</button>`).join('')}</div><button class="voice-cancel-link" id="amb-cancel">إلغاء</button></div>`;
+    case 'confirming':
+      return `<div class="voice-center"><i class="fa-solid fa-microphone-lines voice-status-icon" style="color:#1565C0"></i><div class="voice-status-text">${_esc(statusText||'')}</div>${transcriptCaptionHtml()}<div class="voice-confirm-row"><button class="btn btn-green" id="confirm-yes"><i class="fa-solid fa-check"></i></button><button class="btn btn-red" id="confirm-no"><i class="fa-solid fa-xmark"></i></button></div></div>`;
+    case 'result':
+      return `<div class="voice-center"><i class="fa-solid fa-circle-info voice-status-icon" style="color:#1565C0"></i><div class="voice-status-text">${_esc(statusText||'')}</div>${transcriptCaptionHtml()}</div>`;
+    default: return '';
+  }
+}
+function bottomAreaHtml(){
+  if (STATE==='idle' || STATE==='recording'){
+    const recording = STATE==='recording';
+    return `<div class="voice-bottom"><button class="mic-btn ${recording?'recording':''}" id="mic-btn"><i class="fa-solid ${recording?'fa-stop':'fa-microphone'}"></i></button></div>`;
+  }
+  if (STATE==='result'){
+    return `<div class="voice-bottom"><div class="voice-result-actions">${undoAvailable?`<button class="btn btn-outline btn-block" id="undo-btn"><i class="fa-solid fa-rotate-left"></i> تراجع عن آخر عملية</button>`:''}<button class="btn btn-primary btn-block" id="new-cmd-btn"><i class="fa-solid fa-microphone"></i> أمر جديد</button></div></div>`;
+  }
+  return '';
+}
+function render(){
+  root.innerHTML = `<div class="screen">
+    <div class="app-bar"><button class="icon-btn" id="back-btn" aria-label="رجوع"><i class="fa-solid fa-arrow-right"></i></button><div class="title">تحدث مع التطبيق</div></div>
+    ${mainAreaHtml()}
+    ${bottomAreaHtml()}
+  </div>`;
+  root.querySelector('#back-btn').onclick = goBack;
+  const mic = root.querySelector('#mic-btn'); if (mic) mic.onclick = ()=>{ STATE==='recording' ? stopRecording() : startRecording(); };
+  root.querySelectorAll('[data-cand]').forEach(b=>{ b.onclick = ()=>{ const i=parseInt(b.getAttribute('data-cand'),10); pickCandidate(candidates[i]); }; });
+  const ambCancel = root.querySelector('#amb-cancel'); if (ambCancel) ambCancel.onclick = resetToIdle;
+  const yes = root.querySelector('#confirm-yes'); if (yes) yes.onclick = confirmYes;
+  const no = root.querySelector('#confirm-no'); if (no) no.onclick = confirmNo;
+  const undoBtn = root.querySelector('#undo-btn'); if (undoBtn) undoBtn.onclick = undoLast;
+  const newCmd = root.querySelector('#new-cmd-btn'); if (newCmd) newCmd.onclick = resetToIdle;
+}
+
+// ---------------------------------------------------------------------------
+// 14) الإقلاع
+// ---------------------------------------------------------------------------
+async function boot(){
+  await DevicePermissions.init();
+  if (!currentUid()){
+    root.innerHTML = `<div class="screen"><div class="app-bar"><button class="icon-btn" id="back-btn"><i class="fa-solid fa-arrow-right"></i></button><div class="title">تحدث مع التطبيق</div></div><div class="voice-center"><i class="fa-solid fa-circle-exclamation" style="font-size:48px;color:var(--red)"></i><div class="voice-status-text">يجب تسجيل الدخول من الموقع الرئيسي أولاً.</div></div></div>`;
+    root.querySelector('#back-btn').onclick = goBack;
+    return;
+  }
+  if (!navigator.mediaDevices || !window.MediaRecorder){
+    root.innerHTML = `<div class="screen"><div class="app-bar"><button class="icon-btn" id="back-btn"><i class="fa-solid fa-arrow-right"></i></button><div class="title">تحدث مع التطبيق</div></div><div class="voice-center"><i class="fa-solid fa-circle-exclamation" style="font-size:48px;color:var(--red)"></i><div class="voice-status-text">هذا المتصفح لا يدعم تسجيل الصوت.</div></div></div>`;
+    root.querySelector('#back-btn').onclick = goBack;
+    return;
+  }
+  trySyncNow().catch(()=>{});
+  render();
+}
+boot();
+</script>
+</body>
+</html>
